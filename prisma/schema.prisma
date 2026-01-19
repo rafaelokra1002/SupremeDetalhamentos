@@ -1,0 +1,161 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  password  String
+  role      String   @default("funcionario") // admin ou funcionario
+  active    Boolean  @default(true)
+  avatar    String?  // Base64 da foto de perfil
+  telefone  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  ordensServico OrdemServico[]
+}
+
+model Configuracao {
+  id              String   @id @default(cuid())
+  logoEmpresa     String?  // Base64 do logo
+  nomeEmpresa     String   @default("Supreme Detalhamento")
+  telefoneEmpresa String?
+  emailEmpresa    String?
+  enderecoEmpresa String?
+  instagramEmpresa String?
+  facebookEmpresa  String?
+  whatsappEmpresa  String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model Cliente {
+  id          String   @id @default(cuid())
+  nome        String
+  cpfCnpj     String?
+  telefone    String?
+  whatsapp    String?
+  email       String?
+  observacoes String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  veiculos       Veiculo[]
+  ordensServico  OrdemServico[]
+  contasReceber  ContaReceber[]
+}
+
+model Veiculo {
+  id          String   @id @default(cuid())
+  clienteId   String
+  tipo        String   // carro ou moto
+  marca       String
+  modelo      String
+  ano         String?
+  placa       String?
+  cor         String?
+  observacoes String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  cliente       Cliente        @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  ordensServico OrdemServico[]
+}
+
+model Produto {
+  id            String   @id @default(cuid())
+  nome          String
+  categoria     String?
+  marca         String?
+  quantidade    Int      @default(0)
+  valorUnitario Float    @default(0)
+  estoqueMinimo Int      @default(5)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  itensOrdem ItemOrdem[]
+}
+
+model Servico {
+  id        String   @id @default(cuid())
+  nome      String
+  descricao String?
+  valor     Float    @default(0)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  itensOrdem ItemOrdem[]
+}
+
+model OrdemServico {
+  id              String   @id @default(cuid())
+  clienteId       String
+  veiculoId       String
+  funcionarioId   String
+  status          String   @default("aberta") // aberta, em_andamento, finalizada, entregue
+  valorTotal      Float    @default(0)
+  dataEntrada     DateTime @default(now())
+  dataSaida       DateTime?
+  observacoes     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  cliente       Cliente       @relation(fields: [clienteId], references: [id])
+  veiculo       Veiculo       @relation(fields: [veiculoId], references: [id])
+  funcionario   User          @relation(fields: [funcionarioId], references: [id])
+  itens         ItemOrdem[]
+  contasReceber ContaReceber[]
+}
+
+model ItemOrdem {
+  id             String   @id @default(cuid())
+  ordemServicoId String
+  produtoId      String?
+  servicoId      String?
+  tipo           String   // produto ou servico
+  descricao      String
+  quantidade     Int      @default(1)
+  valorUnitario  Float
+  valorTotal     Float
+  createdAt      DateTime @default(now())
+
+  ordemServico OrdemServico @relation(fields: [ordemServicoId], references: [id], onDelete: Cascade)
+  produto      Produto?     @relation(fields: [produtoId], references: [id])
+  servico      Servico?     @relation(fields: [servicoId], references: [id])
+}
+
+model ContaPagar {
+  id          String   @id @default(cuid())
+  descricao   String
+  categoria   String?
+  valor       Float
+  vencimento  DateTime
+  status      String   @default("pendente") // pago ou pendente
+  dataPago    DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model ContaReceber {
+  id              String   @id @default(cuid())
+  clienteId       String
+  ordemServicoId  String?
+  descricao       String?
+  valor           Float
+  formaPagamento  String?
+  status          String   @default("pendente") // recebido ou pendente
+  dataRecebido    DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  cliente      Cliente       @relation(fields: [clienteId], references: [id])
+  ordemServico OrdemServico? @relation(fields: [ordemServicoId], references: [id])
+}
