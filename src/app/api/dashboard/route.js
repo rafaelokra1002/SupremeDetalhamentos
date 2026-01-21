@@ -3,6 +3,11 @@ import { NextResponse } from 'next/server';
 
 export async function GET() {
   try {
+    // Calcular o primeiro dia do mês atual
+    const now = new Date();
+    const primeiroDiaMes = new Date(now.getFullYear(), now.getMonth(), 1);
+    const anoAtual = now.getFullYear();
+
     const [
       totalClientes,
       totalVeiculos,
@@ -20,38 +25,50 @@ export async function GET() {
       prisma.ordemServico.count({
         where: { status: { in: ['finalizada', 'entregue'] } },
       }),
+      // Faturamento do mês - considera ordens finalizadas OU entregues
       prisma.ordemServico.aggregate({
         _sum: { valorTotal: true },
         where: {
-          status: 'entregue',
-          dataSaida: {
-            gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
-          },
+          status: { in: ['finalizada', 'entregue'] },
+          OR: [
+            {
+              dataSaida: {
+                gte: primeiroDiaMes,
+              },
+            },
+            {
+              AND: [
+                { dataSaida: null },
+                { updatedAt: { gte: primeiroDiaMes } },
+              ],
+            },
+          ],
         },
       }),
       prisma.ordemServico.groupBy({
         by: ['status'],
         _count: { status: true },
       }),
+      // Query PostgreSQL para faturamento mensal
       prisma.$queryRaw`
         SELECT 
-          strftime('%m', dataSaida) as mes,
-          SUM(valorTotal) as total
-        FROM OrdemServico 
-        WHERE status = 'entregue' 
-          AND dataSaida IS NOT NULL
-          AND strftime('%Y', dataSaida) = strftime('%Y', 'now')
-        GROUP BY strftime('%m', dataSaida)
+          EXTRACT(MONTH FROM "dataSaida")::integer as mes,
+          SUM("valorTotal") as total
+        FROM "OrdemServico" 
+        WHERE status IN ('finalizada', 'entregue')
+          AND "dataSaida" IS NOT NULL
+          AND EXTRACT(YEAR FROM "dataSaida") = ${anoAtual}
+        GROUP BY EXTRACT(MONTH FROM "dataSaida")
         ORDER BY mes
       `,
     ]);
 
     const meses = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
     const faturamentoChart = meses.map((mes, index) => {
-      const mesData = faturamentoMensal.find((f) => parseInt(f.mes) === index + 1);
+      const mesData = faturamentoMensal.find((f) => Number(f.mes) === index + 1);
       return {
         mes,
-        valor: mesData?.total || 0,
+        valor: mesData ? Number(mesData.total) : 0,
       };
     });
 

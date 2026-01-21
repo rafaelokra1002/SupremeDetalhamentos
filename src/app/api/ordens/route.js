@@ -25,10 +25,10 @@ export async function GET(request) {
       where,
       include: {
         cliente: {
-          select: { id: true, nome: true },
+          select: { id: true, nome: true, whatsapp: true, telefone: true, cpfCnpj: true, email: true },
         },
         veiculo: {
-          select: { id: true, marca: true, modelo: true, placa: true },
+          select: { id: true, marca: true, modelo: true, placa: true, cor: true, ano: true },
         },
         funcionario: {
           select: { id: true, name: true },

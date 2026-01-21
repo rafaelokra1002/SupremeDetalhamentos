@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
 import Header from '@/components/Header';
 import Loading from '@/components/Loading';
+import Modal from '@/components/Modal';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import {
@@ -19,6 +20,7 @@ import {
   ArrowDownRight,
   Receipt,
   PiggyBank,
+  Plus,
 } from 'lucide-react';
 import {
   BarChart,
@@ -35,11 +37,35 @@ import {
 } from 'recharts';
 import toast from 'react-hot-toast';
 
+const CATEGORIAS_GASTOS = [
+  'Fornecedores',
+  'Produtos',
+  'Aluguel',
+  'Energia',
+  'Água',
+  'Internet',
+  'Telefone',
+  'Salários',
+  'Impostos',
+  'Manutenção',
+  'Marketing',
+  'Outros',
+];
+
 export default function FinanceiroPage() {
   const { isAdmin } = useAuth();
   const router = useRouter();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [modalGastoOpen, setModalGastoOpen] = useState(false);
+  const [loadingGasto, setLoadingGasto] = useState(false);
+  const [formGasto, setFormGasto] = useState({
+    descricao: '',
+    categoria: '',
+    valor: '',
+    vencimento: '',
+    status: 'pendente',
+  });
 
   useEffect(() => {
     if (!isAdmin) {
@@ -70,6 +96,57 @@ export default function FinanceiroPage() {
       style: 'currency',
       currency: 'BRL',
     }).format(value || 0);
+  };
+
+  const handleSubmitGasto = async (e) => {
+    e.preventDefault();
+    
+    if (!formGasto.descricao || !formGasto.valor || !formGasto.vencimento) {
+      toast.error('Preencha todos os campos obrigatórios');
+      return;
+    }
+
+    setLoadingGasto(true);
+    
+    try {
+      const res = await fetch('/api/contas-pagar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...formGasto,
+          valor: parseFloat(formGasto.valor),
+          vencimento: new Date(formGasto.vencimento).toISOString(),
+        }),
+      });
+
+      if (!res.ok) throw new Error('Erro ao salvar');
+
+      toast.success('Gasto adicionado com sucesso!');
+      setModalGastoOpen(false);
+      setFormGasto({
+        descricao: '',
+        categoria: '',
+        valor: '',
+        vencimento: '',
+        status: 'pendente',
+      });
+      fetchFinanceiro();
+    } catch (error) {
+      console.error(error);
+      toast.error('Erro ao adicionar gasto');
+    } finally {
+      setLoadingGasto(false);
+    }
+  };
+
+  const resetFormGasto = () => {
+    setFormGasto({
+      descricao: '',
+      categoria: '',
+      valor: '',
+      vencimento: new Date().toISOString().split('T')[0],
+      status: 'pendente',
+    });
   };
 
   const formatDate = (date) => {
@@ -169,6 +246,20 @@ export default function FinanceiroPage() {
         title="Financeiro" 
         subtitle="Acompanhe o faturamento e despesas"
       />
+
+      {/* Botão Adicionar Gasto */}
+      <div className="flex justify-end mb-4">
+        <button
+          onClick={() => {
+            resetFormGasto();
+            setModalGastoOpen(true);
+          }}
+          className="btn-primary flex items-center gap-2"
+        >
+          <Plus size={20} />
+          Adicionar Gasto
+        </button>
+      </div>
 
       {/* Cards principais de faturamento */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
@@ -341,6 +432,119 @@ export default function FinanceiroPage() {
           </table>
         </div>
       </div>
+
+      {/* Modal Adicionar Gasto */}
+      <Modal
+        isOpen={modalGastoOpen}
+        onClose={() => setModalGastoOpen(false)}
+        title="Adicionar Gasto"
+        size="md"
+      >
+        <form onSubmit={handleSubmitGasto} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-400 mb-2">
+              Descrição *
+            </label>
+            <input
+              type="text"
+              value={formGasto.descricao}
+              onChange={(e) => setFormGasto({ ...formGasto, descricao: e.target.value })}
+              placeholder="Ex: Conta de luz, Compra de produtos..."
+              className="w-full"
+              required
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-400 mb-2">
+                Categoria
+              </label>
+              <select
+                value={formGasto.categoria}
+                onChange={(e) => setFormGasto({ ...formGasto, categoria: e.target.value })}
+                className="w-full"
+              >
+                <option value="">Selecione...</option>
+                {CATEGORIAS_GASTOS.map((cat) => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-400 mb-2">
+                Valor *
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={formGasto.valor}
+                onChange={(e) => setFormGasto({ ...formGasto, valor: e.target.value })}
+                placeholder="0,00"
+                className="w-full"
+                required
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-400 mb-2">
+                Data de Vencimento *
+              </label>
+              <input
+                type="date"
+                value={formGasto.vencimento}
+                onChange={(e) => setFormGasto({ ...formGasto, vencimento: e.target.value })}
+                className="w-full"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-400 mb-2">
+                Status
+              </label>
+              <select
+                value={formGasto.status}
+                onChange={(e) => setFormGasto({ ...formGasto, status: e.target.value })}
+                className="w-full"
+              >
+                <option value="pendente">Pendente</option>
+                <option value="pago">Pago</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="flex gap-3 pt-4">
+            <button
+              type="button"
+              onClick={() => setModalGastoOpen(false)}
+              className="flex-1 btn-secondary"
+              disabled={loadingGasto}
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={loadingGasto}
+              className="flex-1 btn-primary flex items-center justify-center gap-2"
+            >
+              {loadingGasto ? (
+                <>
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  Salvando...
+                </>
+              ) : (
+                <>
+                  <Plus size={18} />
+                  Adicionar Gasto
+                </>
+              )}
+            </button>
+          </div>
+        </form>
+      </Modal>
     </DashboardLayout>
   );
 }

@@ -66,6 +66,18 @@ input::placeholder, textarea::placeholder {
   color: #666;
 }
 
+/* Input de data - ícone do calendário visível */
+input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+}
+
 /* Botões */
 .btn-primary {
   background: linear-gradient(135deg, var(--supreme-gold) 0%, var(--supreme-gold-dark) 100%);

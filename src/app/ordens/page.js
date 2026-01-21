@@ -24,7 +24,12 @@ import {
   Wrench,
   CheckCircle,
   CreditCard,
+  Send,
+  MessageCircle,
+  FileText,
+  Download,
 } from 'lucide-react';
+import { enviarPdfWhatsApp, baixarPdfOrdem } from '@/lib/gerarPdfOrdem';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -54,6 +59,8 @@ export default function OrdensPage() {
   const [selectedOrdem, setSelectedOrdem] = useState(null);
   const [formaPagamento, setFormaPagamento] = useState('');
   const [loadingPagamento, setLoadingPagamento] = useState(false);
+  const [configuracao, setConfiguracao] = useState(null);
+  const [enviandoPdf, setEnviandoPdf] = useState(null);
   const [formData, setFormData] = useState({
     clienteId: '',
     veiculoId: '',
@@ -69,12 +76,13 @@ export default function OrdensPage() {
 
   const fetchData = async () => {
     try {
-      const [ordensRes, clientesRes, servicosRes, produtosRes, usersRes] = await Promise.all([
+      const [ordensRes, clientesRes, servicosRes, produtosRes, usersRes, configRes] = await Promise.all([
         fetch(`/api/ordens?search=${search}&status=${statusFilter}`),
         fetch('/api/clientes'),
         fetch('/api/servicos'),
         fetch('/api/produtos'),
         fetch('/api/users'),
+        fetch('/api/configuracao'),
       ]);
 
       setOrdens(await ordensRes.json());
@@ -82,6 +90,11 @@ export default function OrdensPage() {
       setServicos(await servicosRes.json());
       setProdutos(await produtosRes.json());
       setUsers(await usersRes.json());
+      
+      const configData = await configRes.json();
+      if (!configData.error) {
+        setConfiguracao(configData);
+      }
     } catch (error) {
       toast.error('Erro ao carregar dados');
     } finally {
@@ -316,6 +329,48 @@ export default function OrdensPage() {
     }).format(value || 0);
   };
 
+  const enviarViaCliente = async (ordem, tipo = 'aberta') => {
+    const cliente = ordem.cliente;
+    
+    if (!cliente?.whatsapp && !cliente?.telefone) {
+      toast.error('Cliente não possui WhatsApp ou telefone cadastrado');
+      return;
+    }
+
+    setEnviandoPdf(ordem.id);
+    
+    try {
+      const result = await enviarPdfWhatsApp(ordem, tipo, configuracao);
+      
+      if (result.success) {
+        if (result.method === 'share') {
+          toast.success('PDF compartilhado com sucesso!');
+        } else if (result.method === 'whatsapp') {
+          toast.success('PDF baixado! Anexe-o na conversa do WhatsApp.');
+        }
+      }
+    } catch (error) {
+      console.error('Erro ao enviar PDF:', error);
+      toast.error(error.message || 'Erro ao gerar PDF');
+    } finally {
+      setEnviandoPdf(null);
+    }
+  };
+
+  const handleBaixarPdf = async (ordem, tipo = 'aberta') => {
+    setEnviandoPdf(ordem.id);
+    
+    try {
+      const nomeArquivo = await baixarPdfOrdem(ordem, tipo, configuracao);
+      toast.success(`PDF "${nomeArquivo}" baixado com sucesso!`);
+    } catch (error) {
+      console.error('Erro ao baixar PDF:', error);
+      toast.error('Erro ao gerar PDF');
+    } finally {
+      setEnviandoPdf(null);
+    }
+  };
+
   const getTotal = () => {
     return formData.itens.reduce((acc, item) => acc + (item.valorTotal || 0), 0);
   };
@@ -375,6 +430,7 @@ export default function OrdensPage() {
               <table>
                 <thead>
                   <tr>
+                    <th>OS</th>
                     <th>Cliente / Veículo</th>
                     <th>Data</th>
                     <th>Responsável</th>
@@ -386,13 +442,18 @@ export default function OrdensPage() {
                 <tbody>
                   {ordens.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="text-center py-8 text-gray-500">
+                      <td colSpan={7} className="text-center py-8 text-gray-500">
                         Nenhuma ordem encontrada
                       </td>
                     </tr>
                   ) : (
                     ordens.map((ordem) => (
                       <tr key={ordem.id}>
+                        <td>
+                          <span className="font-bold text-supreme-gold">
+                            {ordem.numero ? String(ordem.numero).padStart(3, '0') : '-'}
+                          </span>
+                        </td>
                         <td>
                           <div>
                             <p className="font-medium text-white flex items-center gap-2">
@@ -426,6 +487,48 @@ export default function OrdensPage() {
                         </td>
                         <td>
                           <div className="flex items-center justify-end gap-2">
+                            {/* Botão Enviar PDF Via Cliente */}
+                            {(ordem.status === 'aberta' || ordem.status === 'em_andamento') && (
+                              <button
+                                onClick={() => enviarViaCliente(ordem, 'aberta')}
+                                disabled={enviandoPdf === ordem.id}
+                                className="p-2 rounded-lg bg-green-600/20 text-green-500 hover:bg-green-600/30 disabled:opacity-50"
+                                title="Enviar PDF para cliente (Abertura)"
+                              >
+                                {enviandoPdf === ordem.id ? (
+                                  <div className="w-[18px] h-[18px] border-2 border-green-500 border-t-transparent rounded-full animate-spin" />
+                                ) : (
+                                  <FileText size={18} />
+                                )}
+                              </button>
+                            )}
+                            {(ordem.status === 'finalizada' || ordem.status === 'entregue') && (
+                              <button
+                                onClick={() => enviarViaCliente(ordem, 'finalizada')}
+                                disabled={enviandoPdf === ordem.id}
+                                className="p-2 rounded-lg bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 disabled:opacity-50"
+                                title="Enviar PDF para cliente (Finalizada)"
+                              >
+                                {enviandoPdf === ordem.id ? (
+                                  <div className="w-[18px] h-[18px] border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+                                ) : (
+                                  <Send size={18} />
+                                )}
+                              </button>
+                            )}
+                            {/* Botão Baixar PDF */}
+                            <button
+                              onClick={() => handleBaixarPdf(ordem, ordem.status === 'finalizada' || ordem.status === 'entregue' ? 'finalizada' : 'aberta')}
+                              disabled={enviandoPdf === ordem.id}
+                              className="p-2 rounded-lg bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 disabled:opacity-50"
+                              title="Baixar PDF"
+                            >
+                              {enviandoPdf === ordem.id ? (
+                                <div className="w-[18px] h-[18px] border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
+                              ) : (
+                                <Download size={18} />
+                              )}
+                            </button>
                             {(ordem.status === 'finalizada') && (
                               <button
                                 onClick={() => handleEntregarClick(ordem)}
@@ -814,6 +917,57 @@ export default function OrdensPage() {
                 <p className="text-gray-400">{selectedOrdem.observacoes}</p>
               </div>
             )}
+
+            {/* Botões de Enviar PDF e Baixar */}
+            <div className="border-t border-supreme-light-gray pt-4">
+              <p className="text-sm text-gray-500 mb-3">Enviar PDF para Cliente</p>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={() => enviarViaCliente(selectedOrdem, 'aberta')}
+                  disabled={enviandoPdf === selectedOrdem.id}
+                  className="flex items-center justify-center gap-2 py-2 px-4 rounded-lg bg-green-600/20 text-green-500 hover:bg-green-600/30 transition-colors disabled:opacity-50"
+                >
+                  {enviandoPdf === selectedOrdem.id ? (
+                    <div className="w-[18px] h-[18px] border-2 border-green-500 border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <FileText size={18} />
+                  )}
+                  PDF Abertura
+                </button>
+                <button
+                  onClick={() => enviarViaCliente(selectedOrdem, 'finalizada')}
+                  disabled={enviandoPdf === selectedOrdem.id}
+                  className="flex items-center justify-center gap-2 py-2 px-4 rounded-lg bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition-colors disabled:opacity-50"
+                >
+                  {enviandoPdf === selectedOrdem.id ? (
+                    <div className="w-[18px] h-[18px] border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <Send size={18} />
+                  )}
+                  PDF Finalização
+                </button>
+              </div>
+              
+              <p className="text-sm text-gray-500 mt-4 mb-3">Baixar PDF</p>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={() => handleBaixarPdf(selectedOrdem, 'aberta')}
+                  disabled={enviandoPdf === selectedOrdem.id}
+                  className="flex items-center justify-center gap-2 py-2 px-4 rounded-lg bg-supreme-gray text-gray-300 hover:bg-supreme-light-gray transition-colors disabled:opacity-50"
+                >
+                  <Download size={18} />
+                  Abertura
+                </button>
+                <button
+                  onClick={() => handleBaixarPdf(selectedOrdem, 'finalizada')}
+                  disabled={enviandoPdf === selectedOrdem.id}
+                  className="flex items-center justify-center gap-2 py-2 px-4 rounded-lg bg-supreme-gray text-gray-300 hover:bg-supreme-light-gray transition-colors disabled:opacity-50"
+                >
+                  <Download size={18} />
+                  Finalização
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </Modal>

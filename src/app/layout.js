@@ -5,11 +5,18 @@ import './globals.css';
 export const metadata = {
   title: 'Supreme Detalhamento - Sistema de Gestão',
   description: 'Sistema de gestão para estética automotiva',
+  icons: {
+    icon: '/file.png',
+    apple: '/file.png',
+  },
 };
 
 export default function RootLayout({ children }) {
   return (
     <html lang="pt-BR">
+      <head>
+        <link rel="icon" href="/file.png" type="image/png" />
+      </head>
       <body>
         <Providers>
           {children}

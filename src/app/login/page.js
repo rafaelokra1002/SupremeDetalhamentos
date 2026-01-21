@@ -1,18 +1,26 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { signIn } from 'next-auth/react';
+import { signIn, useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { Crown, Mail, Lock, Eye, EyeOff, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function LoginPage() {
   const router = useRouter();
+  const { data: session, status } = useSession();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [config, setConfig] = useState(null);
+
+  // Redirecionar se já estiver logado
+  useEffect(() => {
+    if (status === 'authenticated' && session) {
+      router.replace('/dashboard');
+    }
+  }, [session, status, router]);
 
   useEffect(() => {
     fetchConfig();
@@ -43,16 +51,35 @@ export default function LoginPage() {
 
       if (result?.error) {
         toast.error(result.error);
-      } else {
+        setLoading(false);
+      } else if (result?.ok) {
         toast.success('Login realizado com sucesso!');
-        router.push('/dashboard');
+        // Usar window.location para forçar refresh completo
+        window.location.href = '/dashboard';
       }
     } catch (error) {
       toast.error('Erro ao fazer login');
-    } finally {
       setLoading(false);
     }
   };
+
+  // Mostrar loading enquanto verifica sessão
+  if (status === 'loading') {
+    return (
+      <div className="min-h-screen bg-supreme-black flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-red-500" />
+      </div>
+    );
+  }
+
+  // Se já estiver autenticado, não mostrar form
+  if (status === 'authenticated') {
+    return (
+      <div className="min-h-screen bg-supreme-black flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-red-500" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-supreme-black flex items-center justify-center p-4">

@@ -92,11 +92,13 @@ model Servico {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  itensOrdem ItemOrdem[]
+  itensOrdem   ItemOrdem[]
+  agendamentos Agendamento[]
 }
 
 model OrdemServico {
   id              String   @id @default(cuid())
+  numero          Int      @unique @default(autoincrement())
   clienteId       String
   veiculoId       String
   funcionarioId   String
@@ -159,3 +161,61 @@ model ContaReceber {
   cliente      Cliente       @relation(fields: [clienteId], references: [id])
   ordemServico OrdemServico? @relation(fields: [ordemServicoId], references: [id])
 }
+
+// ================================
+// SISTEMA DE AGENDAMENTO ONLINE
+// ================================
+
+model Agendamento {
+  id              String   @id @default(cuid())
+  nomeCliente     String
+  telefone        String
+  email           String?
+  tipoVeiculo     String   // carro ou moto
+  marcaVeiculo    String
+  modeloVeiculo   String
+  placaVeiculo    String?
+  corVeiculo      String?
+  servicoId       String?
+  servicoNome     String   // Nome do serviço solicitado
+  dataAgendamento DateTime
+  horario         String   // Ex: "09:00", "10:00"
+  observacoes     String?
+  status          String   @default("pendente") // pendente, confirmado, cancelado, concluido
+  token           String   @unique @default(cuid()) // Token único para o cliente acessar/cancelar
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  servico Servico? @relation(fields: [servicoId], references: [id])
+}
+
+model HorarioDisponivel {
+  id        String   @id @default(cuid())
+  diaSemana Int      // 0=Domingo, 1=Segunda, ..., 6=Sábado
+  horario   String   // Ex: "09:00"
+  ativo     Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model BloqueioAgenda {
+  id         String   @id @default(cuid())
+  data       DateTime
+  motivo     String?
+  diaInteiro Boolean  @default(true)
+  horarios   String?  // JSON com horários bloqueados se não for dia inteiro
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model ConfiguracaoAgendamento {
+  id                    String   @id @default(cuid())
+  servicosDisponiveis   String   // JSON com IDs dos serviços disponíveis para agendamento
+  horariosDisponiveis   String   // JSON com horários disponíveis ex: ["08:00", "09:00", "10:00"]
+  maxVagasPorHorario    Int      @default(2)
+  diasSemanaAtivos      String   @default("[1,2,3,4,5,6]") // JSON com dias da semana ativos (0=Dom, 6=Sab)
+  mensagemConfirmacao   String?  // Mensagem personalizada após agendamento
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
