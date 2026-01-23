@@ -17,8 +17,9 @@ export async function GET(request) {
 
     const now = new Date();
     
-    // Início do dia
-    const inicioDia = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    // Início do dia (usando horário local do servidor)
+    const inicioDia = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+    const fimDia = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
     
     // Início da semana (domingo)
     const inicioSemana = new Date(now);
@@ -26,10 +27,10 @@ export async function GET(request) {
     inicioSemana.setHours(0, 0, 0, 0);
     
     // Início do mês
-    const inicioMes = new Date(now.getFullYear(), now.getMonth(), 1);
+    const inicioMes = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
     
     // Início do ano
-    const inicioAno = new Date(now.getFullYear(), 0, 1);
+    const inicioAno = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
 
     // ========== BUSCAR TODAS AS ORDENS ENTREGUES ==========
     // Buscar todas as ordens entregues para filtrar por data
@@ -50,9 +51,12 @@ export async function GET(request) {
     const getDataEfetiva = (ordem) => ordem.dataSaida || ordem.updatedAt;
 
     // Filtrar ordens por período
-    const filtrarPorPeriodo = (ordens, dataInicio) => {
+    const filtrarPorPeriodo = (ordens, dataInicio, dataFim = null) => {
       return ordens.filter((o) => {
-        const dataEfetiva = getDataEfetiva(o);
+        const dataEfetiva = new Date(getDataEfetiva(o));
+        if (dataFim) {
+          return dataEfetiva >= dataInicio && dataEfetiva <= dataFim;
+        }
         return dataEfetiva >= dataInicio;
       });
     };
@@ -64,8 +68,8 @@ export async function GET(request) {
     });
 
     // ========== FATURAMENTO BASEADO EM ORDENS ENTREGUES ==========
-    // Diário
-    const ordensDiarias = filtrarPorPeriodo(ordensEntregues, inicioDia);
+    // Diário (usando intervalo do dia inteiro)
+    const ordensDiarias = filtrarPorPeriodo(ordensEntregues, inicioDia, fimDia);
     const faturamentoDiario = calcularAgregado(ordensDiarias);
 
     // Semanal
@@ -240,7 +244,7 @@ export async function GET(request) {
       })),
       ordensFinalizadasMes,
       ticketMedio,
-      lucroMensal: faturamentoMensal._sum.valorTotal || 0,
+      lucroMensal: (faturamentoMensal._sum.valorTotal || 0) - (despesasMensal._sum.valor || 0),
     });
   } catch (error) {
     console.error('Erro ao buscar financeiro:', error);

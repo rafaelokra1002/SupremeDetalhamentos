@@ -18,9 +18,12 @@ import {
   ChevronRight,
   Link2,
   Copy,
-  Settings
+  Settings,
+  Trash2,
+  UserPlus
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import toast from 'react-hot-toast';
 
 export default function AgendamentosPage() {
   const router = useRouter();
@@ -29,15 +32,70 @@ export default function AgendamentosPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [viewModalOpen, setViewModalOpen] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState({ open: false, id: null });
+  const [deleteDialog, setDeleteDialog] = useState({ open: false, id: null });
   const [selectedAgendamento, setSelectedAgendamento] = useState(null);
   const [filtroStatus, setFiltroStatus] = useState('');
   const [dataSelecionada, setDataSelecionada] = useState(new Date().toISOString().split('T')[0]);
   const [viewMode, setViewMode] = useState('lista'); // 'lista' ou 'calendario'
   const [linkCopiado, setLinkCopiado] = useState(false);
+  const [manualModalOpen, setManualModalOpen] = useState(false);
+  const [servicos, setServicos] = useState([]);
+  const [horariosDisponiveis, setHorariosDisponiveis] = useState([]);
+  const [submitting, setSubmitting] = useState(false);
+  const [formData, setFormData] = useState({
+    nomeCliente: '',
+    telefone: '',
+    email: '',
+    tipoVeiculo: 'carro',
+    marcaVeiculo: '',
+    modeloVeiculo: '',
+    placaVeiculo: '',
+    corVeiculo: '',
+    servicoId: '',
+    servicoNome: '',
+    dataAgendamento: '',
+    horario: '',
+    observacoes: '',
+    status: 'confirmado'
+  });
 
   useEffect(() => {
     fetchAgendamentos();
   }, [filtroStatus, dataSelecionada, viewMode]);
+
+  useEffect(() => {
+    fetchServicos();
+  }, []);
+
+  useEffect(() => {
+    if (formData.dataAgendamento && formData.servicoId) {
+      fetchHorarios(formData.dataAgendamento, formData.servicoId);
+    }
+  }, [formData.dataAgendamento, formData.servicoId]);
+
+  const fetchServicos = async () => {
+    try {
+      const response = await fetch('/api/servicos');
+      const data = await response.json();
+      setServicos(data.filter(s => s.active !== false));
+    } catch (error) {
+      console.error('Erro ao buscar serviços:', error);
+    }
+  };
+
+  const fetchHorarios = async (data, servicoId) => {
+    try {
+      let url = `/api/agendamentos/horarios?data=${data}`;
+      if (servicoId) {
+        url += `&servicoId=${servicoId}`;
+      }
+      const response = await fetch(url);
+      const horarios = await response.json();
+      setHorariosDisponiveis(horarios);
+    } catch (error) {
+      console.error('Erro ao buscar horários:', error);
+    }
+  };
 
   const fetchAgendamentos = async () => {
     try {
@@ -89,9 +147,105 @@ export default function AgendamentosPage() {
     }
   };
 
+  const handleExcluir = async () => {
+    if (!deleteDialog.id) return;
+
+    try {
+      const response = await fetch(`/api/agendamentos/${deleteDialog.id}/excluir`, {
+        method: 'DELETE'
+      });
+
+      if (response.ok) {
+        fetchAgendamentos();
+      }
+    } catch (error) {
+      console.error('Erro ao excluir agendamento:', error);
+    } finally {
+      setDeleteDialog({ open: false, id: null });
+    }
+  };
+
   const handleView = (agendamento) => {
     setSelectedAgendamento(agendamento);
     setViewModalOpen(true);
+  };
+
+  const handleFormChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+    
+    if (name === 'servicoId') {
+      const servico = servicos.find(s => s.id === value);
+      if (servico) {
+        setFormData(prev => ({ 
+          ...prev, 
+          servicoId: value,
+          servicoNome: servico.nome 
+        }));
+      }
+    }
+  };
+
+  const resetForm = () => {
+    setFormData({
+      nomeCliente: '',
+      telefone: '',
+      email: '',
+      tipoVeiculo: 'carro',
+      marcaVeiculo: '',
+      modeloVeiculo: '',
+      placaVeiculo: '',
+      corVeiculo: '',
+      servicoId: '',
+      servicoNome: '',
+      dataAgendamento: '',
+      horario: '',
+      observacoes: '',
+      status: 'confirmado'
+    });
+    setHorariosDisponiveis([]);
+  };
+
+  const handleManualSubmit = async (e) => {
+    e.preventDefault();
+    
+    if (!formData.nomeCliente || !formData.telefone || !formData.servicoNome || !formData.dataAgendamento || !formData.horario) {
+      toast.error('Preencha todos os campos obrigatórios');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const response = await fetch('/api/agendamentos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData)
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Erro ao criar agendamento');
+      }
+
+      // Atualizar status se for diferente de pendente
+      if (formData.status !== 'pendente') {
+        await fetch(`/api/agendamentos/${data.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: formData.status })
+        });
+      }
+
+      toast.success('Agendamento criado com sucesso!');
+      setManualModalOpen(false);
+      resetForm();
+      fetchAgendamentos();
+    } catch (error) {
+      toast.error(error.message);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const copiarLinkAgendamento = () => {
@@ -171,7 +325,17 @@ export default function AgendamentosPage() {
             </h1>
             <p className="text-gray-400 text-sm mt-1">Gerencie os agendamentos feitos pelos clientes</p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
+            <button
+              onClick={() => {
+                resetForm();
+                setManualModalOpen(true);
+              }}
+              className="flex items-center gap-2 bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors"
+            >
+              <Plus size={18} />
+              Agendar Manual
+            </button>
             <button
               onClick={() => router.push('/agendamentos/configuracao')}
               className="flex items-center gap-2 bg-supreme-gray text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition-colors"
@@ -379,6 +543,13 @@ export default function AgendamentosPage() {
                               <X size={18} />
                             </button>
                           )}
+                          <button
+                            onClick={() => setDeleteDialog({ open: true, id: agendamento.id })}
+                            className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-500/10 rounded transition-colors"
+                            title="Excluir permanentemente"
+                          >
+                            <Trash2 size={18} />
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -458,6 +629,232 @@ export default function AgendamentosPage() {
         )}
       </Modal>
 
+      {/* Modal de Agendamento Manual */}
+      <Modal
+        isOpen={manualModalOpen}
+        onClose={() => setManualModalOpen(false)}
+        title="Novo Agendamento Manual"
+        size="lg"
+      >
+        <form onSubmit={handleManualSubmit} className="space-y-4">
+          {/* Dados do Cliente */}
+          <div className="border-b border-supreme-light-gray pb-4">
+            <h3 className="text-white font-medium mb-3 flex items-center gap-2">
+              <UserPlus size={18} className="text-red-500" />
+              Dados do Cliente
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-gray-400 text-sm mb-1">Nome *</label>
+                <input
+                  type="text"
+                  name="nomeCliente"
+                  value={formData.nomeCliente}
+                  onChange={handleFormChange}
+                  className="input-field w-full"
+                  placeholder="Nome do cliente"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-gray-400 text-sm mb-1">Telefone *</label>
+                <input
+                  type="tel"
+                  name="telefone"
+                  value={formData.telefone}
+                  onChange={handleFormChange}
+                  className="input-field w-full"
+                  placeholder="(00) 00000-0000"
+                  required
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-gray-400 text-sm mb-1">E-mail</label>
+                <input
+                  type="email"
+                  name="email"
+                  value={formData.email}
+                  onChange={handleFormChange}
+                  className="input-field w-full"
+                  placeholder="email@exemplo.com"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Dados do Veículo */}
+          <div className="border-b border-supreme-light-gray pb-4">
+            <h3 className="text-white font-medium mb-3 flex items-center gap-2">
+              <Car size={18} className="text-red-500" />
+              Dados do Veículo
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-gray-400 text-sm mb-1">Tipo *</label>
+                <select
+                  name="tipoVeiculo"
+                  value={formData.tipoVeiculo}
+                  onChange={handleFormChange}
+                  className="input-field w-full"
+                >
+                  <option value="carro">Carro</option>
+                  <option value="moto">Moto</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-gray-400 text-sm mb-1">Marca *</label>
+                <input
+                  type="text"
+                  name="marcaVeiculo"
+                  value={formData.marcaVeiculo}
+                  onChange={handleFormChange}
+                  className="input-field w-full"
+                  placeholder="Ex: Toyota"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-gray-400 text-sm mb-1">Modelo *</label>
+                <input
+                  type="text"
+                  name="modeloVeiculo"
+                  value={formData.modeloVeiculo}
+                  onChange={handleFormChange}
+                  className="input-field w-full"
+                  placeholder="Ex: Corolla"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-gray-400 text-sm mb-1">Placa</label>
+                <input
+                  type="text"
+                  name="placaVeiculo"
+                  value={formData.placaVeiculo}
+                  onChange={handleFormChange}
+                  className="input-field w-full"
+                  placeholder="ABC-1234"
+                />
+              </div>
+              <div>
+                <label className="block text-gray-400 text-sm mb-1">Cor</label>
+                <input
+                  type="text"
+                  name="corVeiculo"
+                  value={formData.corVeiculo}
+                  onChange={handleFormChange}
+                  className="input-field w-full"
+                  placeholder="Ex: Preto"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Serviço e Horário */}
+          <div className="border-b border-supreme-light-gray pb-4">
+            <h3 className="text-white font-medium mb-3 flex items-center gap-2">
+              <CalendarDays size={18} className="text-red-500" />
+              Serviço e Horário
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="md:col-span-2">
+                <label className="block text-gray-400 text-sm mb-1">Serviço *</label>
+                <select
+                  name="servicoId"
+                  value={formData.servicoId}
+                  onChange={handleFormChange}
+                  className="input-field w-full"
+                  required
+                >
+                  <option value="">Selecione um serviço</option>
+                  {servicos.map(servico => (
+                    <option key={servico.id} value={servico.id}>
+                      {servico.nome} - R$ {servico.valor?.toFixed(2)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-gray-400 text-sm mb-1">Data *</label>
+                <input
+                  type="date"
+                  name="dataAgendamento"
+                  value={formData.dataAgendamento}
+                  onChange={handleFormChange}
+                  className="input-field w-full"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-gray-400 text-sm mb-1">Horário *</label>
+                <select
+                  name="horario"
+                  value={formData.horario}
+                  onChange={handleFormChange}
+                  className="input-field w-full"
+                  required
+                  disabled={!formData.dataAgendamento || !formData.servicoId}
+                >
+                  <option value="">Selecione um horário</option>
+                  {horariosDisponiveis.map((h, idx) => {
+                    const horario = h.horario || h;
+                    const disponivel = h.disponivel !== false;
+                    return (
+                      <option key={idx} value={horario} disabled={!disponivel}>
+                        {horario} {!disponivel ? '(Indisponível)' : ''}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+              <div>
+                <label className="block text-gray-400 text-sm mb-1">Status</label>
+                <select
+                  name="status"
+                  value={formData.status}
+                  onChange={handleFormChange}
+                  className="input-field w-full"
+                >
+                  <option value="pendente">Pendente</option>
+                  <option value="confirmado">Confirmado</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Observações */}
+          <div>
+            <label className="block text-gray-400 text-sm mb-1">Observações</label>
+            <textarea
+              name="observacoes"
+              value={formData.observacoes}
+              onChange={handleFormChange}
+              className="input-field w-full"
+              rows={3}
+              placeholder="Observações adicionais..."
+            />
+          </div>
+
+          {/* Botões */}
+          <div className="flex gap-3 pt-4">
+            <button
+              type="button"
+              onClick={() => setManualModalOpen(false)}
+              className="flex-1 px-4 py-2 bg-supreme-gray text-white rounded-lg hover:bg-supreme-light-gray transition-colors"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={submitting}
+              className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
+            >
+              {submitting ? 'Salvando...' : 'Criar Agendamento'}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
       {/* Confirm Dialog */}
       <ConfirmDialog
         isOpen={confirmDialog.open}
@@ -465,6 +862,15 @@ export default function AgendamentosPage() {
         onConfirm={handleCancelar}
         title="Cancelar Agendamento"
         message="Tem certeza que deseja cancelar este agendamento?"
+      />
+
+      {/* Delete Dialog */}
+      <ConfirmDialog
+        isOpen={deleteDialog.open}
+        onClose={() => setDeleteDialog({ open: false, id: null })}
+        onConfirm={handleExcluir}
+        title="Excluir Agendamento"
+        message="Tem certeza que deseja EXCLUIR PERMANENTEMENTE este agendamento? Esta ação não pode ser desfeita."
       />
     </DashboardLayout>
   );
