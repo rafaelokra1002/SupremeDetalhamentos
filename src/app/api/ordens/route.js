@@ -1,16 +1,60 @@
 import prisma from '@/lib/prisma';
 import { NextResponse } from 'next/server';
 
+// Função auxiliar para calcular datas de período
+function getDateRange(periodo) {
+  const now = new Date();
+  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  
+  switch (periodo) {
+    case 'hoje':
+      return {
+        gte: startOfDay,
+        lt: new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000),
+      };
+    case 'semana':
+      const dayOfWeek = now.getDay();
+      const startOfWeek = new Date(startOfDay);
+      startOfWeek.setDate(startOfDay.getDate() - dayOfWeek);
+      const endOfWeek = new Date(startOfWeek);
+      endOfWeek.setDate(startOfWeek.getDate() + 7);
+      return {
+        gte: startOfWeek,
+        lt: endOfWeek,
+      };
+    case 'mes':
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+      return {
+        gte: startOfMonth,
+        lt: endOfMonth,
+      };
+    case 'ano':
+      const startOfYear = new Date(now.getFullYear(), 0, 1);
+      const endOfYear = new Date(now.getFullYear() + 1, 0, 1);
+      return {
+        gte: startOfYear,
+        lt: endOfYear,
+      };
+    default:
+      return null;
+  }
+}
+
 // GET - Listar todas as ordens
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
     const search = searchParams.get('search') || '';
     const status = searchParams.get('status');
+    const periodo = searchParams.get('periodo');
+
+    const dateRange = getDateRange(periodo);
 
     const where = {
       AND: [
         status ? { status } : {},
+        dateRange ? { dataEntrada: dateRange } : {},
         {
           OR: [
             { cliente: { nome: { contains: search } } },

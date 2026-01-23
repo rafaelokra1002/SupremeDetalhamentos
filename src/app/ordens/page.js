@@ -52,6 +52,7 @@ export default function OrdensPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [periodoFilter, setPeriodoFilter] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [viewModalOpen, setViewModalOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -72,12 +73,12 @@ export default function OrdensPage() {
 
   useEffect(() => {
     fetchData();
-  }, [search, statusFilter]);
+  }, [search, statusFilter, periodoFilter]);
 
   const fetchData = async () => {
     try {
       const [ordensRes, clientesRes, servicosRes, produtosRes, usersRes, configRes] = await Promise.all([
-        fetch(`/api/ordens?search=${search}&status=${statusFilter}`),
+        fetch(`/api/ordens?search=${search}&status=${statusFilter}&periodo=${periodoFilter}`),
         fetch('/api/clientes'),
         fetch('/api/servicos'),
         fetch('/api/produtos'),
@@ -406,6 +407,20 @@ export default function OrdensPage() {
                     {status.label}
                   </option>
                 ))}
+              </select>
+            </div>
+            <div className="relative">
+              <Calendar size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+              <select
+                value={periodoFilter}
+                onChange={(e) => setPeriodoFilter(e.target.value)}
+                className="pl-12 pr-8 min-w-[180px]"
+              >
+                <option value="">Todos os períodos</option>
+                <option value="hoje">Hoje</option>
+                <option value="semana">Esta Semana</option>
+                <option value="mes">Este Mês</option>
+                <option value="ano">Este Ano</option>
               </select>
             </div>
           </div>
