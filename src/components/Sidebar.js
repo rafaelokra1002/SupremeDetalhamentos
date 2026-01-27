@@ -22,11 +22,13 @@ import {
   UserCog,
   TrendingUp,
   CalendarDays,
+  FileText,
 } from 'lucide-react';
 
 const menuItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['admin', 'funcionario'] },
   { href: '/agendamentos', label: 'Agendamentos', icon: CalendarDays, roles: ['admin', 'funcionario'] },
+  { href: '/orcamentos', label: 'Orçamentos', icon: FileText, roles: ['admin', 'funcionario'] },
   { href: '/clientes', label: 'Clientes', icon: Users, roles: ['admin', 'funcionario'] },
   { href: '/veiculos', label: 'Veículos', icon: Car, roles: ['admin', 'funcionario'] },
   { href: '/ordens', label: 'Ordens de Serviço', icon: ClipboardList, roles: ['admin', 'funcionario'] },

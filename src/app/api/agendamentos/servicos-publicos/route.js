@@ -12,6 +12,21 @@ export async function GET() {
     if (config?.servicosDisponiveis) {
       servicosIds = JSON.parse(config.servicosDisponiveis);
     }
+
+    // Incluir serviços com regras específicas
+    if (config?.regrasPorServico) {
+      const regrasPorServico = JSON.parse(config.regrasPorServico);
+      regrasPorServico.forEach((regra) => {
+        if (regra?.servicoId && !servicosIds.includes(regra.servicoId)) {
+          servicosIds.push(regra.servicoId);
+        }
+      });
+    }
+    
+    // Incluir o serviço de lavagem técnica se estiver configurado
+    if (config?.servicoLavagemTecnicaId && !servicosIds.includes(config.servicoLavagemTecnicaId)) {
+      servicosIds.push(config.servicoLavagemTecnicaId);
+    }
     
     // Se não houver configuração ou nenhum serviço selecionado, buscar serviços de lavagem
     if (servicosIds.length === 0) {

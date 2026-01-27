@@ -25,6 +25,19 @@ import {
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 
+const formatLocalDate = (date = new Date()) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const parseDateOnly = (dateStr) => {
+  if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return new Date(dateStr);
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(year, month - 1, day);
+};
+
 export default function AgendamentosPage() {
   const router = useRouter();
   const [agendamentos, setAgendamentos] = useState([]);
@@ -35,7 +48,7 @@ export default function AgendamentosPage() {
   const [deleteDialog, setDeleteDialog] = useState({ open: false, id: null });
   const [selectedAgendamento, setSelectedAgendamento] = useState(null);
   const [filtroStatus, setFiltroStatus] = useState('');
-  const [dataSelecionada, setDataSelecionada] = useState(new Date().toISOString().split('T')[0]);
+  const [dataSelecionada, setDataSelecionada] = useState(formatLocalDate());
   const [viewMode, setViewMode] = useState('lista'); // 'lista' ou 'calendario'
   const [linkCopiado, setLinkCopiado] = useState(false);
   const [manualModalOpen, setManualModalOpen] = useState(false);
@@ -300,9 +313,9 @@ export default function AgendamentosPage() {
   };
 
   const navegarData = (direcao) => {
-    const data = new Date(dataSelecionada);
+    const data = parseDateOnly(dataSelecionada);
     data.setDate(data.getDate() + direcao);
-    setDataSelecionada(data.toISOString().split('T')[0]);
+    setDataSelecionada(formatLocalDate(data));
   };
 
   // Estatísticas

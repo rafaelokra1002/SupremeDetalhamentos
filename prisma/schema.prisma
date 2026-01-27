@@ -26,6 +26,7 @@ model Configuracao {
   id              String   @id @default(cuid())
   logoEmpresa     String?  // Base64 do logo
   nomeEmpresa     String   @default("Supreme Detalhamento")
+  cnpjEmpresa     String?
   telefoneEmpresa String?
   emailEmpresa    String?
   enderecoEmpresa String?
@@ -209,13 +210,45 @@ model BloqueioAgenda {
 }
 
 model ConfiguracaoAgendamento {
-  id                    String   @id @default(cuid())
-  servicosDisponiveis   String   // JSON com IDs dos serviços disponíveis para agendamento
-  horariosDisponiveis   String   // JSON com horários disponíveis ex: ["08:00", "09:00", "10:00"]
-  maxVagasPorHorario    Int      @default(2)
-  diasSemanaAtivos      String   @default("[1,2,3,4,5,6]") // JSON com dias da semana ativos (0=Dom, 6=Sab)
-  mensagemConfirmacao   String?  // Mensagem personalizada após agendamento
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  id                        String   @id @default(cuid())
+  servicosDisponiveis       String   // JSON com IDs dos serviços disponíveis para agendamento
+  horariosDisponiveis       String   // JSON com horários disponíveis ex: ["08:00", "09:00", "10:00"]
+  maxVagasPorHorario        Int      @default(2)
+  regrasPorServico          String?  // JSON com regras por serviço: [{servicoId, maxVagas, horarios}]
+  diasSemanaAtivos          String   @default("[1,2,3,4,5,6]") // JSON com dias da semana ativos (0=Dom, 6=Sab)
+  mensagemConfirmacao       String?  // Mensagem personalizada após agendamento
+  // Configuração específica para Lavagem Técnica
+  servicoLavagemTecnicaId   String?  // ID do serviço de lavagem técnica
+  horariosLavagemTecnica    String?  // JSON com horários específicos para lavagem técnica
+  maxVagasLavagemTecnica    Int      @default(1) // Máximo de vagas por horário para lavagem técnica
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
 }
 
+model Orcamento {
+  id              String   @id @default(cuid())
+  numero          Int      @default(autoincrement()) // Número sequencial do orçamento
+  // Dados do cliente
+  nomeCliente     String
+  telefoneCliente String?
+  emailCliente    String?
+  // Dados do veículo
+  veiculoMarca    String?
+  veiculoModelo   String?
+  veiculoPlaca    String?
+  veiculoCor      String?
+  veiculoAno      String?
+  // Valores
+  valorTotal      Float    @default(0)
+  desconto        Float    @default(0)
+  valorFinal      Float    @default(0)
+  // Observações e validade
+  observacoes     String?
+  validade        DateTime? // Data de validade do orçamento
+  status          String   @default("pendente") // pendente, aprovado, recusado, expirado
+  // Itens do orçamento (JSON com array de itens)
+  itens           String   @default("[]") // JSON: [{descricao, quantidade, valorUnitario, valorTotal}]
+  responsavel     String?  // Nome do responsável que fez o orçamento
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}

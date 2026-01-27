@@ -42,6 +42,7 @@ export async function PUT(request) {
     const {
       nomeEmpresa,
       logoEmpresa,
+      cnpjEmpresa,
       telefoneEmpresa,
       emailEmpresa,
       enderecoEmpresa,
@@ -58,6 +59,7 @@ export async function PUT(request) {
         data: {
           nomeEmpresa,
           logoEmpresa,
+          cnpjEmpresa,
           telefoneEmpresa,
           emailEmpresa,
           enderecoEmpresa,
@@ -71,6 +73,7 @@ export async function PUT(request) {
         data: {
           nomeEmpresa,
           logoEmpresa,
+          cnpjEmpresa,
           telefoneEmpresa,
           emailEmpresa,
           enderecoEmpresa,

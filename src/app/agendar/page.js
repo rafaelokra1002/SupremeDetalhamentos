@@ -35,8 +35,7 @@ export default function AgendamentoPublico() {
     modeloVeiculo: '',
     placaVeiculo: '',
     corVeiculo: '',
-    servicoId: '',
-    servicoNome: '',
+    servicosSelecionados: [], // Array de {id, nome, valor}
     dataAgendamento: '',
     horario: '',
     observacoes: ''
@@ -47,16 +46,22 @@ export default function AgendamentoPublico() {
   const TOLERANCIA_MINUTOS = 15;
   const CHAVE_PIX = '71981183766';
   const WHATSAPP_COMPROVANTE = '5571981183766';
+  const STORAGE_DADOS_CLIENTE = 'agendamentoPublicoDadosCliente';
   const DADOS_BANCARIOS = {
     nome: 'Victor Britto fontes Melo de Jesus',
     banco: 'Banco de Brasília'
   };
 
-  // Calcular taxa baseada no serviço selecionado
+  // Calcular valor total dos serviços selecionados
+  const getValorTotalServicos = () => {
+    return formData.servicosSelecionados.reduce((total, s) => total + (s.valor || 0), 0);
+  };
+
+  // Calcular taxa baseada nos serviços selecionados
   const getValorTaxa = () => {
-    const servico = servicos.find(s => s.id === formData.servicoId);
-    if (servico && servico.valor > 0) {
-      return (servico.valor * TAXA_PERCENTUAL) / 100;
+    const valorTotal = getValorTotalServicos();
+    if (valorTotal > 0) {
+      return (valorTotal * TAXA_PERCENTUAL) / 100;
     }
     return 0;
   };
@@ -67,10 +72,28 @@ export default function AgendamentoPublico() {
   }, []);
 
   useEffect(() => {
-    if (formData.dataAgendamento && formData.servicoId) {
-      fetchHorarios(formData.dataAgendamento, formData.servicoId);
+    if (typeof window === 'undefined') return;
+    try {
+      const dadosSalvos = localStorage.getItem(STORAGE_DADOS_CLIENTE);
+      if (!dadosSalvos) return;
+      const dadosCliente = JSON.parse(dadosSalvos);
+      if (!dadosCliente || typeof dadosCliente !== 'object') return;
+      setFormData(prev => ({
+        ...prev,
+        nomeCliente: dadosCliente.nomeCliente || prev.nomeCliente,
+        telefone: dadosCliente.telefone || prev.telefone,
+        email: dadosCliente.email || prev.email
+      }));
+    } catch (error) {
+      console.error('Erro ao carregar dados do cliente:', error);
     }
-  }, [formData.dataAgendamento, formData.servicoId]);
+  }, []);
+
+  useEffect(() => {
+    if (formData.dataAgendamento && formData.servicosSelecionados.length > 0) {
+      fetchHorarios(formData.dataAgendamento);
+    }
+  }, [formData.dataAgendamento, formData.servicosSelecionados]);
 
   const fetchConfig = async () => {
     try {
@@ -96,9 +119,10 @@ export default function AgendamentoPublico() {
 
   const fetchHorarios = async (data, servicoId = null) => {
     try {
+      const servicoSelecionadoId = servicoId || formData.servicosSelecionados[0]?.id || null;
       let url = `/api/agendamentos/horarios?data=${data}`;
-      if (servicoId) {
-        url += `&servicoId=${servicoId}`;
+      if (servicoSelecionadoId) {
+        url += `&servicoId=${servicoSelecionadoId}`;
       }
       const response = await fetch(url);
       const horarios = await response.json();
@@ -117,26 +141,24 @@ export default function AgendamentoPublico() {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
     
-    // Se selecionou um serviço, atualizar o ID e o nome do serviço
-    if (name === 'servicoId') {
-      const servico = servicos.find(s => s.id === value);
-      if (servico) {
-        setFormData(prev => ({ 
-          ...prev, 
-          servicoId: value,
-          servicoNome: servico.nome 
-        }));
-        // Rebuscar horários com o serviço selecionado
-        if (formData.dataAgendamento) {
-          fetchHorarios(formData.dataAgendamento, value);
-        }
+    // Se selecionou uma data, buscar horários com os serviços atuais
+    if (name === 'dataAgendamento' && value && formData.servicosSelecionados.length > 0) {
+      fetchHorarios(value);
+    }
+  };
+
+  // Função para toggle de serviço (adicionar/remover)
+  const toggleServico = (servico) => {
+    setFormData(prev => {
+      const jaExiste = prev.servicosSelecionados.find(s => s.id === servico.id);
+      let novosServicos;
+      if (jaExiste) {
+        novosServicos = prev.servicosSelecionados.filter(s => s.id !== servico.id);
+      } else {
+        novosServicos = [...prev.servicosSelecionados, { id: servico.id, nome: servico.nome, valor: servico.valor || 0 }];
       }
-    }
-    
-    // Se selecionou uma data, buscar horários com o serviço atual
-    if (name === 'dataAgendamento' && value) {
-      fetchHorarios(value, formData.servicoId);
-    }
+      return { ...prev, servicosSelecionados: novosServicos };
+    });
   };
 
   const handleSubmit = async (e) => {
@@ -145,16 +167,38 @@ export default function AgendamentoPublico() {
     setSubmitting(true);
 
     try {
+      // Preparar dados para envio - converter serviços selecionados para formato da API
+      const dadosEnvio = {
+        ...formData,
+        servicoId: formData.servicosSelecionados[0]?.id || null,
+        servicoNome: formData.servicosSelecionados.map(s => s.nome).join(', '),
+        servicosSelecionados: formData.servicosSelecionados,
+        valorTotal: getValorTotalServicos()
+      };
+
       const response = await fetch('/api/agendamentos', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
+        body: JSON.stringify(dadosEnvio)
       });
 
       const data = await response.json();
 
       if (!response.ok) {
         throw new Error(data.error || 'Erro ao criar agendamento');
+      }
+
+      if (typeof window !== 'undefined') {
+        try {
+          const dadosCliente = {
+            nomeCliente: formData.nomeCliente,
+            telefone: formData.telefone,
+            email: formData.email
+          };
+          localStorage.setItem(STORAGE_DADOS_CLIENTE, JSON.stringify(dadosCliente));
+        } catch (error) {
+          console.error('Erro ao salvar dados do cliente:', error);
+        }
       }
 
       setAgendamentoCriado(data);
@@ -183,7 +227,7 @@ export default function AgendamentoPublico() {
       case 2:
         return formData.tipoVeiculo && formData.marcaVeiculo && formData.modeloVeiculo;
       case 3:
-        return formData.servicoId && formData.dataAgendamento && formData.horario;
+        return formData.servicosSelecionados.length > 0 && formData.dataAgendamento && formData.horario;
       default:
         return true;
     }
@@ -543,42 +587,57 @@ export default function AgendamentoPublico() {
               
               <div>
                 <label className="block text-sm font-medium text-gray-400 mb-2">
-                  Selecione o Serviço *
+                  Selecione os Serviços * <span className="text-xs text-gray-500">(você pode selecionar mais de um)</span>
                 </label>
                 <div className="grid gap-3">
-                  {servicos.map((servico) => (
-                    <label
-                      key={servico.id}
-                      className={`p-4 rounded-lg border-2 cursor-pointer transition-colors ${
-                        formData.servicoId === servico.id
-                          ? 'border-red-500 bg-red-500/10'
-                          : 'border-supreme-light-gray bg-supreme-gray hover:border-gray-500'
-                      }`}
-                    >
-                      <input
-                        type="radio"
-                        name="servicoId"
-                        value={servico.id}
-                        checked={formData.servicoId === servico.id}
-                        onChange={handleChange}
-                        className="hidden"
-                      />
-                      <div className="flex justify-between items-center">
-                        <div>
-                          <p className="font-medium text-white">{servico.nome}</p>
-                          {servico.descricao && (
-                            <p className="text-sm text-gray-400">{servico.descricao}</p>
+                  {servicos.map((servico) => {
+                    const selecionado = formData.servicosSelecionados.find(s => s.id === servico.id);
+                    return (
+                      <div
+                        key={servico.id}
+                        onClick={() => toggleServico(servico)}
+                        className={`p-4 rounded-lg border-2 cursor-pointer transition-colors ${
+                          selecionado
+                            ? 'border-red-500 bg-red-500/10'
+                            : 'border-supreme-light-gray bg-supreme-gray hover:border-gray-500'
+                        }`}
+                      >
+                        <div className="flex justify-between items-center">
+                          <div className="flex items-center gap-3">
+                            <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
+                              selecionado ? 'bg-red-500 border-red-500' : 'border-gray-500'
+                            }`}>
+                              {selecionado && <Check size={14} className="text-white" />}
+                            </div>
+                            <div>
+                              <p className="font-medium text-white">{servico.nome}</p>
+                              {servico.descricao && (
+                                <p className="text-sm text-gray-400">{servico.descricao}</p>
+                              )}
+                            </div>
+                          </div>
+                          {servico.valor > 0 && (
+                            <span className="font-bold text-green-400">
+                              R$ {servico.valor.toFixed(2)}
+                            </span>
                           )}
                         </div>
-                        {servico.valor > 0 && (
-                          <span className="font-bold text-green-400">
-                            R$ {servico.valor.toFixed(2)}
-                          </span>
-                        )}
                       </div>
-                    </label>
-                  ))}
+                    );
+                  })}
                 </div>
+                {formData.servicosSelecionados.length > 0 && (
+                  <div className="mt-3 p-3 bg-supreme-dark rounded-lg border border-supreme-light-gray">
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-400">
+                        {formData.servicosSelecionados.length} serviço(s) selecionado(s)
+                      </span>
+                      <span className="font-bold text-green-400">
+                        Total: R$ {getValorTotalServicos().toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
               
               <div>
@@ -593,15 +652,15 @@ export default function AgendamentoPublico() {
                   min={getMinDate()}
                   max={getMaxDate()}
                   required
-                  disabled={!formData.servicoId}
+                  disabled={formData.servicosSelecionados.length === 0}
                   className="w-full p-3 bg-supreme-gray border border-supreme-light-gray rounded-lg text-white focus:ring-2 focus:ring-red-500 focus:border-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
                 />
-                {!formData.servicoId && (
-                  <p className="text-xs text-gray-500 mt-1">Selecione um serviço primeiro</p>
+                {formData.servicosSelecionados.length === 0 && (
+                  <p className="text-xs text-gray-500 mt-1">Selecione pelo menos um serviço primeiro</p>
                 )}
               </div>
               
-              {formData.dataAgendamento && formData.servicoId && (
+              {formData.dataAgendamento && formData.servicosSelecionados.length > 0 && (
                 <div>
                   <label className="block text-sm font-medium text-gray-400 mb-2">
                     Horário Disponível * 
@@ -640,9 +699,7 @@ export default function AgendamentoPublico() {
                     </div>
                   ) : (
                     <p className="text-gray-500 text-center py-4">
-                      {formData.servicoId 
-                        ? 'Nenhum horário disponível para esta data.'
-                        : 'Selecione um serviço primeiro para ver os horários disponíveis.'}
+                      Nenhum horário disponível para esta data.
                     </p>
                   )}
                 </div>
@@ -689,8 +746,16 @@ export default function AgendamentoPublico() {
                 
                 <div>
                   <h3 className="font-semibold text-white mb-2">Agendamento</h3>
-                  <p className="text-gray-300"><strong className="text-gray-400">Serviço:</strong> {formData.servicoNome}</p>
-                  <p className="text-gray-300">
+                  <div className="text-gray-300">
+                    <strong className="text-gray-400">Serviço(s):</strong>
+                    <ul className="list-disc list-inside ml-2 mt-1">
+                      {formData.servicosSelecionados.map(s => (
+                        <li key={s.id}>{s.nome} - R$ {s.valor.toFixed(2)}</li>
+                      ))}
+                    </ul>
+                    <p className="mt-1 text-green-400 font-bold">Total: R$ {getValorTotalServicos().toFixed(2)}</p>
+                  </div>
+                  <p className="text-gray-300 mt-2">
                     <strong className="text-gray-400">Data:</strong> {new Date(formData.dataAgendamento + 'T12:00:00').toLocaleDateString('pt-BR')}
                   </p>
                   <p className="text-gray-300"><strong className="text-gray-400">Horário:</strong> {formData.horario}</p>

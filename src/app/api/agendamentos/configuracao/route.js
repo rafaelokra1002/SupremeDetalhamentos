@@ -48,12 +48,50 @@ export async function GET(request) {
       orderBy: { nome: 'asc' }
     });
 
+    const servicosDisponiveis = JSON.parse(config.servicosDisponiveis || '[]');
+    const horariosDisponiveis = JSON.parse(config.horariosDisponiveis || '[]');
+    const regrasPorServicoRaw = config.regrasPorServico
+      ? JSON.parse(config.regrasPorServico)
+      : [];
+    const regrasMap = new Map(regrasPorServicoRaw.map(regra => [regra.servicoId, regra]));
+
+    const servicosParaRegras = new Set(servicosDisponiveis);
+    if (config.servicoLavagemTecnicaId) {
+      servicosParaRegras.add(config.servicoLavagemTecnicaId);
+    }
+
+    const regrasPorServico = [];
+    servicosParaRegras.forEach((servicoId) => {
+      const regra = regrasMap.get(servicoId);
+      const horariosLavagemTecnica = JSON.parse(config.horariosLavagemTecnica || '[]');
+
+      regrasPorServico.push({
+        servicoId,
+        maxVagas: regra?.maxVagas ?? (servicoId === config.servicoLavagemTecnicaId
+          ? (config.maxVagasLavagemTecnica || 1)
+          : (config.maxVagasPorHorario || 2)),
+        horarios: Array.isArray(regra?.horarios)
+          ? regra.horarios
+          : (servicoId === config.servicoLavagemTecnicaId && horariosLavagemTecnica.length > 0
+            ? horariosLavagemTecnica
+            : horariosDisponiveis)
+      });
+    });
+
+    regrasPorServicoRaw
+      .filter(regra => !servicosParaRegras.has(regra.servicoId))
+      .forEach(regra => regrasPorServico.push(regra));
+
     return NextResponse.json({
       config: {
         ...config,
-        servicosDisponiveis: JSON.parse(config.servicosDisponiveis || '[]'),
-        horariosDisponiveis: JSON.parse(config.horariosDisponiveis || '[]'),
-        diasSemanaAtivos: JSON.parse(config.diasSemanaAtivos || '[1,2,3,4,5,6]')
+        servicosDisponiveis,
+        horariosDisponiveis,
+        regrasPorServico,
+        diasSemanaAtivos: JSON.parse(config.diasSemanaAtivos || '[1,2,3,4,5,6]'),
+        horariosLavagemTecnica: JSON.parse(config.horariosLavagemTecnica || '[]'),
+        servicoLavagemTecnicaId: config.servicoLavagemTecnicaId || '',
+        maxVagasLavagemTecnica: config.maxVagasLavagemTecnica || 1
       },
       todosServicos
     });
@@ -77,8 +115,12 @@ export async function PUT(request) {
       servicosDisponiveis,
       horariosDisponiveis,
       maxVagasPorHorario,
+      regrasPorServico,
       diasSemanaAtivos,
-      mensagemConfirmacao
+      mensagemConfirmacao,
+      servicoLavagemTecnicaId,
+      horariosLavagemTecnica,
+      maxVagasLavagemTecnica
     } = body;
 
     let config = await prisma.configuracaoAgendamento.findFirst();
@@ -90,8 +132,12 @@ export async function PUT(request) {
           servicosDisponiveis: JSON.stringify(servicosDisponiveis || []),
           horariosDisponiveis: JSON.stringify(horariosDisponiveis || []),
           maxVagasPorHorario: maxVagasPorHorario || 2,
+          regrasPorServico: JSON.stringify(regrasPorServico || []),
           diasSemanaAtivos: JSON.stringify(diasSemanaAtivos || [1, 2, 3, 4, 5, 6]),
-          mensagemConfirmacao: mensagemConfirmacao || ''
+          mensagemConfirmacao: mensagemConfirmacao || '',
+          servicoLavagemTecnicaId: servicoLavagemTecnicaId || null,
+          horariosLavagemTecnica: JSON.stringify(horariosLavagemTecnica || []),
+          maxVagasLavagemTecnica: maxVagasLavagemTecnica || 1
         }
       });
     } else {
@@ -100,8 +146,12 @@ export async function PUT(request) {
           servicosDisponiveis: JSON.stringify(servicosDisponiveis || []),
           horariosDisponiveis: JSON.stringify(horariosDisponiveis || []),
           maxVagasPorHorario: maxVagasPorHorario || 2,
+          regrasPorServico: JSON.stringify(regrasPorServico || []),
           diasSemanaAtivos: JSON.stringify(diasSemanaAtivos || [1, 2, 3, 4, 5, 6]),
-          mensagemConfirmacao: mensagemConfirmacao || ''
+          mensagemConfirmacao: mensagemConfirmacao || '',
+          servicoLavagemTecnicaId: servicoLavagemTecnicaId || null,
+          horariosLavagemTecnica: JSON.stringify(horariosLavagemTecnica || []),
+          maxVagasLavagemTecnica: maxVagasLavagemTecnica || 1
         }
       });
     }
@@ -110,7 +160,10 @@ export async function PUT(request) {
       ...config,
       servicosDisponiveis: JSON.parse(config.servicosDisponiveis),
       horariosDisponiveis: JSON.parse(config.horariosDisponiveis),
-      diasSemanaAtivos: JSON.parse(config.diasSemanaAtivos)
+      diasSemanaAtivos: JSON.parse(config.diasSemanaAtivos),
+      horariosLavagemTecnica: JSON.parse(config.horariosLavagemTecnica || '[]'),
+      servicoLavagemTecnicaId: config.servicoLavagemTecnicaId || '',
+      maxVagasLavagemTecnica: config.maxVagasLavagemTecnica || 1
     });
   } catch (error) {
     console.error('Erro ao atualizar configuração:', error);

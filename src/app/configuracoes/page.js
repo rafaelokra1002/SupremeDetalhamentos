@@ -47,6 +47,7 @@ export default function ConfiguracoesPage() {
   const [empresa, setEmpresa] = useState({
     nomeEmpresa: 'Supreme Detalhamento',
     logoEmpresa: '',
+    cnpjEmpresa: '',
     telefoneEmpresa: '',
     emailEmpresa: '',
     enderecoEmpresa: '',
@@ -95,6 +96,7 @@ export default function ConfiguracoesPage() {
           setEmpresa({
             nomeEmpresa: data.nomeEmpresa || 'Supreme Detalhamento',
             logoEmpresa: data.logoEmpresa || '',
+            cnpjEmpresa: data.cnpjEmpresa || '',
             telefoneEmpresa: data.telefoneEmpresa || '',
             emailEmpresa: data.emailEmpresa || '',
             enderecoEmpresa: data.enderecoEmpresa || '',
@@ -431,6 +433,17 @@ export default function ConfiguracoesPage() {
                     onChange={(e) => setEmpresa(prev => ({ ...prev, nomeEmpresa: e.target.value }))}
                     className="w-full px-4 py-2 bg-supreme-dark-lighter border border-gray-700 rounded-lg text-white focus:border-supreme-gold focus:outline-none"
                     required
+                  />
+                </div>
+                
+                <div className="md:col-span-2">
+                  <label className="block text-sm text-gray-400 mb-1">CNPJ</label>
+                  <input
+                    type="text"
+                    value={empresa.cnpjEmpresa}
+                    onChange={(e) => setEmpresa(prev => ({ ...prev, cnpjEmpresa: e.target.value }))}
+                    placeholder="00.000.000/0000-00"
+                    className="w-full px-4 py-2 bg-supreme-dark-lighter border border-gray-700 rounded-lg text-white focus:border-supreme-gold focus:outline-none"
                   />
                 </div>
                 

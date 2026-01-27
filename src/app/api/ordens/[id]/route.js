@@ -43,11 +43,20 @@ export async function PUT(request, { params }) {
       observacoes,
     } = body;
 
+    // Buscar ordem atual para verificar status anterior
+    const ordemAtual = await prisma.ordemServico.findUnique({
+      where: { id: params.id },
+      select: { status: true, dataSaida: true }
+    });
+
     // Calcular valor total
     const valorTotal = itens ? itens.reduce((acc, item) => acc + (item.valorTotal || 0), 0) : undefined;
 
-    // Se status mudou para entregue, definir data de saída
-    const dataSaida = status === 'entregue' ? new Date() : undefined;
+    // Se status mudou para entregue E ainda não tem dataSaida, definir agora
+    let dataSaida = undefined;
+    if (status === 'entregue' && !ordemAtual?.dataSaida) {
+      dataSaida = new Date();
+    }
 
     // Atualizar ordem
     const ordem = await prisma.ordemServico.update({
@@ -58,7 +67,7 @@ export async function PUT(request, { params }) {
         funcionarioId,
         status,
         valorTotal,
-        dataSaida,
+        ...(dataSaida && { dataSaida }), // Só inclui se tiver valor
         observacoes,
       },
     });

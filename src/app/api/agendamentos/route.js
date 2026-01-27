@@ -1,6 +1,14 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 
+const parseDateOnly = (dateStr) => {
+  if (typeof dateStr === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    const [ano, mes, dia] = dateStr.split('-').map(Number);
+    return new Date(ano, mes - 1, dia);
+  }
+  return new Date(dateStr);
+};
+
 // GET - Listar agendamentos (requer autenticação - admin)
 export async function GET(request) {
   try {
@@ -15,9 +23,9 @@ export async function GET(request) {
     }
     
     if (data) {
-      const dataInicio = new Date(data);
+      const dataInicio = parseDateOnly(data);
       dataInicio.setHours(0, 0, 0, 0);
-      const dataFim = new Date(data);
+      const dataFim = parseDateOnly(data);
       dataFim.setHours(23, 59, 59, 999);
       
       where.dataAgendamento = {
@@ -75,28 +83,57 @@ export async function POST(request) {
       );
     }
     
-    // Verificar se o horário está disponível (máximo 2 carros por horário)
-    const dataAgend = new Date(dataAgendamento);
-    const dataInicio = new Date(dataAgend);
-    dataInicio.setHours(0, 0, 0, 0);
-    const dataFim = new Date(dataAgend);
-    dataFim.setHours(23, 59, 59, 999);
+    // Parse da data selecionada (formato YYYY-MM-DD) - consistente com a API de horários
+    let dataInicio, dataFim;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dataAgendamento)) {
+      const [ano, mes, dia] = dataAgendamento.split('-').map(Number);
+      dataInicio = new Date(ano, mes - 1, dia, 0, 0, 0, 0);
+      dataFim = new Date(ano, mes - 1, dia, 23, 59, 59, 999);
+    } else {
+      const dataAgend = new Date(dataAgendamento);
+      dataInicio = new Date(dataAgend);
+      dataInicio.setHours(0, 0, 0, 0);
+      dataFim = new Date(dataAgend);
+      dataFim.setHours(23, 59, 59, 999);
+    }
     
     // Buscar configuração para obter o máximo de vagas
     const config = await prisma.configuracaoAgendamento.findFirst();
-    const maxVagas = config?.maxVagasPorHorario || 2;
+
+    // Verificar se o serviço selecionado é Lavagem Técnica (compatibilidade)
+    const ehLavagemTecnica = servicoId && config?.servicoLavagemTecnicaId === servicoId;
+
+    // Regras por serviço
+    const regrasPorServico = config?.regrasPorServico
+      ? JSON.parse(config.regrasPorServico)
+      : [];
+    const regraServico = servicoId
+      ? regrasPorServico.find(regra => regra.servicoId === servicoId)
+      : null;
+
+    // Usar limite específico por serviço (ou compatibilidade)
+    const maxVagasRegra = regraServico?.maxVagas;
+    const maxVagas = Number.isFinite(Number(maxVagasRegra))
+      ? Number(maxVagasRegra)
+      : (ehLavagemTecnica ? (config?.maxVagasLavagemTecnica || 1) : (config?.maxVagasPorHorario || 2));
+    
+    // Configurar filtro para contar agendamentos do mesmo serviço
+    let whereAgendamentos = {
+      dataAgendamento: {
+        gte: dataInicio,
+        lte: dataFim
+      },
+      horario,
+      status: {
+        in: ['pendente', 'confirmado']
+      }
+    };
+    if (servicoId) {
+      whereAgendamentos.servicoId = servicoId;
+    }
     
     const agendamentosNoHorario = await prisma.agendamento.count({
-      where: {
-        dataAgendamento: {
-          gte: dataInicio,
-          lte: dataFim
-        },
-        horario,
-        status: {
-          in: ['pendente', 'confirmado']
-        }
-      }
+      where: whereAgendamentos
     });
     
     // Verificar máximo de vagas por horário

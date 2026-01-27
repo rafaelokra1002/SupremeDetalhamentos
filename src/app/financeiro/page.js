@@ -115,7 +115,7 @@ export default function FinanceiroPage() {
         body: JSON.stringify({
           ...formGasto,
           valor: parseFloat(formGasto.valor),
-          vencimento: new Date(formGasto.vencimento).toISOString(),
+          vencimento: formGasto.vencimento,
         }),
       });
 

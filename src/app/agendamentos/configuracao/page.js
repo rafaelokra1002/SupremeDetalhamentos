@@ -41,8 +41,13 @@ export default function ConfiguracaoAgendamentoPage() {
     servicosDisponiveis: [],
     horariosDisponiveis: [],
     maxVagasPorHorario: 2,
+    regrasPorServico: [],
     diasSemanaAtivos: [1, 2, 3, 4, 5, 6],
-    mensagemConfirmacao: ''
+    mensagemConfirmacao: '',
+    // Configuração de Lavagem Técnica
+    servicoLavagemTecnicaId: '',
+    horariosLavagemTecnica: [],
+    maxVagasLavagemTecnica: 1
   });
   
   const [novoHorario, setNovoHorario] = useState('');
@@ -97,7 +102,8 @@ export default function ConfiguracaoAgendamentoPage() {
       if (servicosAtuais.includes(servicoId)) {
         return {
           ...prev,
-          servicosDisponiveis: servicosAtuais.filter(id => id !== servicoId)
+          servicosDisponiveis: servicosAtuais.filter(id => id !== servicoId),
+          regrasPorServico: (prev.regrasPorServico || []).filter(regra => regra.servicoId !== servicoId)
         };
       } else {
         return {
@@ -105,6 +111,28 @@ export default function ConfiguracaoAgendamentoPage() {
           servicosDisponiveis: [...servicosAtuais, servicoId]
         };
       }
+    });
+  };
+
+  const atualizarRegraServico = (servicoId, updates) => {
+    setConfig(prev => {
+      const regras = prev.regrasPorServico || [];
+      const regraExistente = regras.find(regra => regra.servicoId === servicoId);
+      const regraBase = regraExistente || {
+        servicoId,
+        maxVagas: prev.maxVagasPorHorario || 2,
+        horarios: prev.horariosDisponiveis || []
+      };
+      const regraAtualizada = { ...regraBase, ...updates };
+
+      const regrasAtualizadas = regraExistente
+        ? regras.map(regra => regra.servicoId === servicoId ? regraAtualizada : regra)
+        : [...regras, regraAtualizada];
+
+      return {
+        ...prev,
+        regrasPorServico: regrasAtualizadas
+      };
     });
   };
 
@@ -263,6 +291,81 @@ export default function ConfiguracaoAgendamentoPage() {
           )}
         </div>
 
+        {/* Configuração por Serviço */}
+        <div className="card">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="p-2 rounded-lg bg-amber-500/20">
+              <Settings size={20} className="text-amber-400" />
+            </div>
+            <h3 className="font-semibold text-white text-lg">Configuração por Serviço</h3>
+          </div>
+          <p className="text-gray-400 text-sm mb-4">
+            Defina quantas vagas por horário e, se desejar, horários específicos para cada serviço.
+          </p>
+
+          {todosServicos.filter(servico => config.servicosDisponiveis?.includes(servico.id)).length === 0 && (
+            <p className="text-gray-500 text-center py-4">
+              Selecione serviços acima para configurar vagas e horários por serviço.
+            </p>
+          )}
+
+          <div className="space-y-4">
+            {todosServicos
+              .filter(servico => config.servicosDisponiveis?.includes(servico.id))
+              .map(servico => {
+                const regra = (config.regrasPorServico || []).find(r => r.servicoId === servico.id);
+                const horariosTexto = (regra?.horarios?.length
+                  ? regra.horarios
+                  : (config.horariosDisponiveis || [])
+                ).join(', ');
+
+                return (
+                  <div key={servico.id} className="border border-gray-700 rounded-lg p-4 bg-supreme-dark">
+                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                      <div>
+                        <h4 className="text-white font-medium">{servico.nome}</h4>
+                        <p className="text-gray-400 text-sm">
+                          {servico.descricao || 'Sem descrição'}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <label className="text-gray-400 text-sm">Vagas por horário</label>
+                        <input
+                          type="number"
+                          min={1}
+                          value={regra?.maxVagas ?? config.maxVagasPorHorario ?? 2}
+                          onChange={(e) => atualizarRegraServico(servico.id, {
+                            maxVagas: Math.max(1, Number(e.target.value || 1))
+                          })}
+                          className="input-field w-24"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="mt-3">
+                      <label className="block text-sm text-gray-400 mb-1">
+                        Horários específicos (separados por vírgula) — deixe vazio para usar os horários gerais
+                      </label>
+                      <input
+                        type="text"
+                        value={horariosTexto}
+                        onChange={(e) => {
+                          const horarios = e.target.value
+                            .split(',')
+                            .map(h => h.trim())
+                            .filter(Boolean);
+                          atualizarRegraServico(servico.id, { horarios });
+                        }}
+                        placeholder="08:00, 08:30, 09:00"
+                        className="input-field"
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+        </div>
+
         {/* Horários Disponíveis */}
         <div className="card">
           <div className="flex items-center gap-3 mb-4">
@@ -347,54 +450,6 @@ export default function ConfiguracaoAgendamentoPage() {
                 </button>
               );
             })}
-          </div>
-        </div>
-
-        {/* Configurações Adicionais */}
-        <div className="card">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 rounded-lg bg-orange-500/20">
-              <Settings size={20} className="text-orange-400" />
-            </div>
-            <h3 className="font-semibold text-white text-lg">Configurações Adicionais</h3>
-          </div>
-
-          <div className="space-y-4">
-            <div>
-              <label className="block text-gray-300 text-sm mb-2">
-                Máximo de vagas por horário
-              </label>
-              <input
-                type="number"
-                min="1"
-                max="10"
-                value={config.maxVagasPorHorario || 2}
-                onChange={(e) => setConfig(prev => ({ 
-                  ...prev, 
-                  maxVagasPorHorario: parseInt(e.target.value) || 2 
-                }))}
-                className="input-field w-32"
-              />
-              <p className="text-gray-500 text-sm mt-1">
-                Quantos veículos podem ser agendados no mesmo horário
-              </p>
-            </div>
-
-            <div>
-              <label className="block text-gray-300 text-sm mb-2">
-                Mensagem de confirmação (opcional)
-              </label>
-              <textarea
-                value={config.mensagemConfirmacao || ''}
-                onChange={(e) => setConfig(prev => ({ 
-                  ...prev, 
-                  mensagemConfirmacao: e.target.value 
-                }))}
-                rows={3}
-                className="input-field w-full"
-                placeholder="Mensagem exibida após o cliente fazer um agendamento..."
-              />
-            </div>
           </div>
         </div>
 

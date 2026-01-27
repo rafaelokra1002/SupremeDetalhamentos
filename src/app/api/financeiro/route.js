@@ -15,22 +15,38 @@ export async function GET(request) {
       return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
     }
 
+    // Usar fuso horário de Brasília (UTC-3)
     const now = new Date();
+    const offsetBrasilia = -3 * 60; // -3 horas em minutos
+    const offsetLocal = now.getTimezoneOffset(); // offset local em minutos
+    const diffMinutos = offsetBrasilia - (-offsetLocal); // diferença para ajustar
     
-    // Início do dia (usando horário local do servidor)
-    const inicioDia = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-    const fimDia = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+    // Ajustar para horário de Brasília
+    const nowBrasilia = new Date(now.getTime() + diffMinutos * 60 * 1000);
     
-    // Início da semana (domingo)
-    const inicioSemana = new Date(now);
-    inicioSemana.setDate(now.getDate() - now.getDay());
+    // Início do dia em Brasília (meia-noite)
+    const inicioDia = new Date(nowBrasilia);
+    inicioDia.setHours(0, 0, 0, 0);
+    // Converter de volta para UTC para comparar com o banco
+    const inicioDiaUTC = new Date(inicioDia.getTime() - diffMinutos * 60 * 1000);
+    
+    const fimDia = new Date(nowBrasilia);
+    fimDia.setHours(23, 59, 59, 999);
+    const fimDiaUTC = new Date(fimDia.getTime() - diffMinutos * 60 * 1000);
+    
+    // Início da semana (domingo) em Brasília
+    const inicioSemana = new Date(nowBrasilia);
+    inicioSemana.setDate(nowBrasilia.getDate() - nowBrasilia.getDay());
     inicioSemana.setHours(0, 0, 0, 0);
+    const inicioSemanaUTC = new Date(inicioSemana.getTime() - diffMinutos * 60 * 1000);
     
-    // Início do mês
-    const inicioMes = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+    // Início do mês em Brasília
+    const inicioMes = new Date(nowBrasilia.getFullYear(), nowBrasilia.getMonth(), 1, 0, 0, 0, 0);
+    const inicioMesUTC = new Date(inicioMes.getTime() - diffMinutos * 60 * 1000);
     
-    // Início do ano
-    const inicioAno = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
+    // Início do ano em Brasília
+    const inicioAno = new Date(nowBrasilia.getFullYear(), 0, 1, 0, 0, 0, 0);
+    const inicioAnoUTC = new Date(inicioAno.getTime() - diffMinutos * 60 * 1000);
 
     // ========== BUSCAR TODAS AS ORDENS ENTREGUES ==========
     // Buscar todas as ordens entregues para filtrar por data
@@ -48,12 +64,19 @@ export async function GET(request) {
     });
 
     // Função auxiliar para obter a data efetiva da ordem
-    const getDataEfetiva = (ordem) => ordem.dataSaida || ordem.updatedAt;
+    const getDataEfetiva = (ordem) => {
+      const data = ordem.dataSaida || ordem.updatedAt;
+      return new Date(data);
+    };
 
-    // Filtrar ordens por período
+    // Filtrar ordens por período - comparando apenas datas (ignorando horários)
     const filtrarPorPeriodo = (ordens, dataInicio, dataFim = null) => {
       return ordens.filter((o) => {
-        const dataEfetiva = new Date(getDataEfetiva(o));
+        const dataEfetiva = getDataEfetiva(o);
+        
+        // Para debug - descomentar se precisar
+        // console.log('Ordem:', o.id, 'Data efetiva:', dataEfetiva, 'Inicio:', dataInicio, 'Fim:', dataFim);
+        
         if (dataFim) {
           return dataEfetiva >= dataInicio && dataEfetiva <= dataFim;
         }
@@ -68,20 +91,20 @@ export async function GET(request) {
     });
 
     // ========== FATURAMENTO BASEADO EM ORDENS ENTREGUES ==========
-    // Diário (usando intervalo do dia inteiro)
-    const ordensDiarias = filtrarPorPeriodo(ordensEntregues, inicioDia, fimDia);
+    // Diário (usando intervalo do dia inteiro em UTC ajustado para Brasília)
+    const ordensDiarias = filtrarPorPeriodo(ordensEntregues, inicioDiaUTC, fimDiaUTC);
     const faturamentoDiario = calcularAgregado(ordensDiarias);
 
     // Semanal
-    const ordensSemanais = filtrarPorPeriodo(ordensEntregues, inicioSemana);
+    const ordensSemanais = filtrarPorPeriodo(ordensEntregues, inicioSemanaUTC);
     const faturamentoSemanal = calcularAgregado(ordensSemanais);
 
     // Mensal
-    const ordensMensais = filtrarPorPeriodo(ordensEntregues, inicioMes);
+    const ordensMensais = filtrarPorPeriodo(ordensEntregues, inicioMesUTC);
     const faturamentoMensal = calcularAgregado(ordensMensais);
 
     // Anual
-    const ordensAnuais = filtrarPorPeriodo(ordensEntregues, inicioAno);
+    const ordensAnuais = filtrarPorPeriodo(ordensEntregues, inicioAnoUTC);
     const faturamentoAnual = calcularAgregado(ordensAnuais);
 
     // Pendente a receber (ordens finalizadas mas não entregues)
@@ -109,7 +132,7 @@ export async function GET(request) {
       where: {
         status: 'pago',
         dataPago: {
-          gte: inicioMes,
+          gte: inicioMesUTC,
         },
       },
       _sum: {
@@ -121,8 +144,8 @@ export async function GET(request) {
     // Faturamento por dia da semana atual (baseado em ordens entregues)
     const diasSemana = [];
     for (let i = 0; i < 7; i++) {
-      const data = new Date(inicioSemana);
-      data.setDate(inicioSemana.getDate() + i);
+      const data = new Date(inicioSemanaUTC);
+      data.setDate(inicioSemanaUTC.getDate() + i);
       const proximoDia = new Date(data);
       proximoDia.setDate(data.getDate() + 1);
 
@@ -145,9 +168,9 @@ export async function GET(request) {
     const mesesAno = [];
     const nomesMeses = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
     
-    for (let i = 0; i <= now.getMonth(); i++) {
-      const inicioMesLoop = new Date(now.getFullYear(), i, 1);
-      const fimMesLoop = new Date(now.getFullYear(), i + 1, 1);
+    for (let i = 0; i <= nowBrasilia.getMonth(); i++) {
+      const inicioMesLoop = new Date(Date.UTC(nowBrasilia.getFullYear(), i, 1, 3, 0, 0)); // 3h UTC = 0h Brasília
+      const fimMesLoop = new Date(Date.UTC(nowBrasilia.getFullYear(), i + 1, 1, 3, 0, 0));
 
       // Filtrar ordens do mês usando data efetiva (dataSaida ou updatedAt)
       const ordensDoMes = ordensEntregues.filter((o) => {
