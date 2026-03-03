@@ -52,9 +52,9 @@ export async function PUT(request, { params }) {
     // Calcular valor total
     const valorTotal = itens ? itens.reduce((acc, item) => acc + (item.valorTotal || 0), 0) : undefined;
 
-    // Se status mudou para entregue E ainda não tem dataSaida, definir agora
+    // Se status mudou para finalizada ou entregue E ainda não tem dataSaida, definir agora
     let dataSaida = undefined;
-    if (status === 'entregue' && !ordemAtual?.dataSaida) {
+    if ((status === 'finalizada' || status === 'entregue') && !ordemAtual?.dataSaida) {
       dataSaida = new Date();
     }
 

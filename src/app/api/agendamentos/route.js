@@ -100,6 +100,9 @@ export async function POST(request) {
     // Buscar configuração para obter o máximo de vagas
     const config = await prisma.configuracaoAgendamento.findFirst();
 
+    // Limite global de vagas por horário (independente do serviço)
+    const maxVagasGlobal = config?.maxVagasPorHorario || 2;
+
     // Verificar se o serviço selecionado é Lavagem Técnica (compatibilidade)
     const ehLavagemTecnica = servicoId && config?.servicoLavagemTecnicaId === servicoId;
 
@@ -113,35 +116,56 @@ export async function POST(request) {
 
     // Usar limite específico por serviço (ou compatibilidade)
     const maxVagasRegra = regraServico?.maxVagas;
-    const maxVagas = Number.isFinite(Number(maxVagasRegra))
+    const maxVagasServico = Number.isFinite(Number(maxVagasRegra))
       ? Number(maxVagasRegra)
-      : (ehLavagemTecnica ? (config?.maxVagasLavagemTecnica || 1) : (config?.maxVagasPorHorario || 2));
+      : (ehLavagemTecnica ? (config?.maxVagasLavagemTecnica || 1) : maxVagasGlobal);
     
-    // Configurar filtro para contar agendamentos do mesmo serviço
-    let whereAgendamentos = {
-      dataAgendamento: {
-        gte: dataInicio,
-        lte: dataFim
-      },
-      horario,
-      status: {
-        in: ['pendente', 'confirmado']
+    // ========== VERIFICAÇÃO 1: Limite GLOBAL por horário ==========
+    // Conta TODOS os agendamentos no horário, independente do serviço
+    const totalAgendamentosNoHorario = await prisma.agendamento.count({
+      where: {
+        dataAgendamento: {
+          gte: dataInicio,
+          lte: dataFim
+        },
+        horario,
+        status: {
+          in: ['pendente', 'confirmado']
+        }
       }
-    };
-    if (servicoId) {
-      whereAgendamentos.servicoId = servicoId;
-    }
-    
-    const agendamentosNoHorario = await prisma.agendamento.count({
-      where: whereAgendamentos
     });
     
-    // Verificar máximo de vagas por horário
-    if (agendamentosNoHorario >= maxVagas) {
+    // Verificar limite global primeiro
+    if (totalAgendamentosNoHorario >= maxVagasGlobal) {
       return NextResponse.json(
         { error: 'Este horário já está lotado. Por favor, escolha outro horário.' },
         { status: 400 }
       );
+    }
+    
+    // ========== VERIFICAÇÃO 2: Limite por SERVIÇO específico ==========
+    // Se tem servicoId, também verifica o limite específico do serviço
+    if (servicoId) {
+      const agendamentosDoServicoNoHorario = await prisma.agendamento.count({
+        where: {
+          dataAgendamento: {
+            gte: dataInicio,
+            lte: dataFim
+          },
+          horario,
+          servicoId,
+          status: {
+            in: ['pendente', 'confirmado']
+          }
+        }
+      });
+      
+      if (agendamentosDoServicoNoHorario >= maxVagasServico) {
+        return NextResponse.json(
+          { error: 'Este horário já está lotado para este serviço. Por favor, escolha outro horário.' },
+          { status: 400 }
+        );
+      }
     }
     
     // Verificar bloqueio de agenda

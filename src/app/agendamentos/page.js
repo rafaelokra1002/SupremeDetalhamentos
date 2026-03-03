@@ -98,7 +98,7 @@ export default function AgendamentosPage() {
 
   const fetchHorarios = async (data, servicoId) => {
     try {
-      let url = `/api/agendamentos/horarios?data=${data}`;
+      let url = `/api/agendamentos/horarios?data=${data}&manual=true`;
       if (servicoId) {
         url += `&servicoId=${servicoId}`;
       }
@@ -308,6 +308,12 @@ export default function AgendamentosPage() {
 
   const enviarWhatsApp = (agendamento) => {
     const mensagem = `Olá ${agendamento.nomeCliente}! Confirmamos seu agendamento para ${formatarDataHora(agendamento.dataAgendamento, agendamento.horario)}. Serviço: ${agendamento.servicoNome}. Aguardamos você!`;
+    const telefone = agendamento.telefone.replace(/\D/g, '');
+    window.open(`https://wa.me/55${telefone}?text=${encodeURIComponent(mensagem)}`, '_blank');
+  };
+
+  const enviarWhatsAppNaoCompareceu = (agendamento) => {
+    const mensagem = `Olá ${agendamento.nomeCliente}! Registramos o não comparecimento e o agendamento de ${formatarDataHora(agendamento.dataAgendamento, agendamento.horario)} foi cancelado. Se precisar reagendar, estamos à disposição.`;
     const telefone = agendamento.telefone.replace(/\D/g, '');
     window.open(`https://wa.me/55${telefone}?text=${encodeURIComponent(mensagem)}`, '_blank');
   };
@@ -522,13 +528,24 @@ export default function AgendamentosPage() {
                           >
                             <Eye size={18} />
                           </button>
-                          <button
-                            onClick={() => enviarWhatsApp(agendamento)}
-                            className="p-2 text-gray-400 hover:text-green-400 hover:bg-green-500/10 rounded transition-colors"
-                            title="Enviar WhatsApp"
-                          >
-                            <MessageCircle size={18} />
-                          </button>
+                          {agendamento.status !== 'cancelado' && (
+                            <button
+                              onClick={() => enviarWhatsApp(agendamento)}
+                              className="p-2 text-gray-400 hover:text-green-400 hover:bg-green-500/10 rounded transition-colors"
+                              title="Enviar WhatsApp"
+                            >
+                              <MessageCircle size={18} />
+                            </button>
+                          )}
+                          {agendamento.status === 'cancelado' && (
+                            <button
+                              onClick={() => enviarWhatsAppNaoCompareceu(agendamento)}
+                              className="p-2 text-gray-400 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors"
+                              title="WhatsApp - Não compareceu"
+                            >
+                              <MessageCircle size={18} />
+                            </button>
+                          )}
                           {agendamento.status === 'pendente' && (
                             <button
                               onClick={() => handleStatusChange(agendamento.id, 'confirmado')}
@@ -620,12 +637,22 @@ export default function AgendamentosPage() {
             )}
             
             <div className="border-t border-supreme-light-gray pt-4 flex gap-2">
-              <button
-                onClick={() => enviarWhatsApp(selectedAgendamento)}
-                className="flex-1 flex items-center justify-center gap-2 bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600"
-              >
-                <MessageCircle size={18} /> WhatsApp
-              </button>
+              {selectedAgendamento.status !== 'cancelado' && (
+                <button
+                  onClick={() => enviarWhatsApp(selectedAgendamento)}
+                  className="flex-1 flex items-center justify-center gap-2 bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600"
+                >
+                  <MessageCircle size={18} /> WhatsApp
+                </button>
+              )}
+              {selectedAgendamento.status === 'cancelado' && (
+                <button
+                  onClick={() => enviarWhatsAppNaoCompareceu(selectedAgendamento)}
+                  className="flex-1 flex items-center justify-center gap-2 bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600"
+                >
+                  <MessageCircle size={18} /> Não compareceu
+                </button>
+              )}
               {selectedAgendamento.status === 'pendente' && (
                 <button
                   onClick={() => {

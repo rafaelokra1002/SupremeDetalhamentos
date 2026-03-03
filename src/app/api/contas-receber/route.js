@@ -6,8 +6,28 @@ export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status');
+    const mes = searchParams.get('mes'); // 1-12
+    const ano = searchParams.get('ano'); // ex: 2026
 
-    const where = status ? { status } : {};
+    // Construir filtro de data se mês e ano foram fornecidos
+    let dateFilter = {};
+    if (mes && ano) {
+      const mesInt = parseInt(mes) - 1; // JavaScript usa 0-11
+      const anoInt = parseInt(ano);
+      const inicioMes = new Date(anoInt, mesInt, 1, 0, 0, 0, 0);
+      const fimMes = new Date(anoInt, mesInt + 1, 0, 23, 59, 59, 999);
+      dateFilter = {
+        createdAt: {
+          gte: inicioMes,
+          lte: fimMes,
+        },
+      };
+    }
+
+    const where = {
+      ...(status ? { status } : {}),
+      ...dateFilter,
+    };
 
     const contas = await prisma.contaReceber.findMany({
       where,

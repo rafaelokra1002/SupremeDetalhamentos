@@ -7,6 +7,7 @@ export async function GET(request) {
     const { searchParams } = new URL(request.url);
     const data = searchParams.get('data');
     const servicoId = searchParams.get('servicoId');
+    const manual = searchParams.get('manual') === 'true'; // Se é agendamento manual (admin)
     
     if (!data) {
       return NextResponse.json(
@@ -20,13 +21,19 @@ export async function GET(request) {
     const dataAgend = new Date(ano, mes - 1, dia);
     const diaSemana = dataAgend.getDay();
     
-    // Obter data e hora atual
+    // Obter data e hora atual em Brasília (UTC-3)
     const agora = new Date();
-    const hojeAno = agora.getFullYear();
-    const hojeMes = agora.getMonth();
-    const hojeDia = agora.getDate();
-    const horaAtual = agora.getHours();
-    const minutoAtual = agora.getMinutes();
+    // Ajustar para horário de Brasília
+    const offsetBrasilia = -3 * 60; // -3 horas em minutos
+    const offsetLocal = agora.getTimezoneOffset(); // offset local em minutos (positivo para oeste de UTC)
+    const diffMinutos = offsetBrasilia + offsetLocal; // diferença para ajustar
+    const agoraBrasilia = new Date(agora.getTime() + diffMinutos * 60 * 1000);
+    
+    const hojeAno = agoraBrasilia.getFullYear();
+    const hojeMes = agoraBrasilia.getMonth();
+    const hojeDia = agoraBrasilia.getDate();
+    const horaAtual = agoraBrasilia.getHours();
+    const minutoAtual = agoraBrasilia.getMinutes();
     
     // Verificar se a data selecionada é hoje
     const ehHoje = (ano === hojeAno && (mes - 1) === hojeMes && dia === hojeDia);
@@ -69,10 +76,14 @@ export async function GET(request) {
         ? horariosLavagemTecnica
         : horariosDisponiveisPadrao;
 
+    // Limite global de vagas por horário (independente do serviço)
+    const maxVagasGlobal = config?.maxVagasPorHorario || 2;
+
+    // Limite específico por serviço
     const maxVagasRegra = regraServico?.maxVagas;
-    const maxVagas = Number.isFinite(Number(maxVagasRegra))
+    const maxVagasServico = Number.isFinite(Number(maxVagasRegra))
       ? Number(maxVagasRegra)
-      : (ehLavagemTecnica ? (config?.maxVagasLavagemTecnica || 1) : (config?.maxVagasPorHorario || 2));
+      : (ehLavagemTecnica ? (config?.maxVagasLavagemTecnica || 1) : maxVagasGlobal);
     
     // Se não há horários configurados, retornar vazio
     if (!horariosBase || horariosBase.length === 0) {
@@ -101,39 +112,59 @@ export async function GET(request) {
       horariosBloqueados = JSON.parse(bloqueio.horarios);
     }
     
-    // Buscar agendamentos existentes para esta data
-    // Contar apenas o serviço selecionado (vagas por serviço)
-    let whereAgendamentos = {
-      dataAgendamento: {
-        gte: dataInicio,
-        lte: dataFim
+    // ========== BUSCAR TODOS OS AGENDAMENTOS (para limite global) ==========
+    const todosAgendamentos = await prisma.agendamento.findMany({
+      where: {
+        dataAgendamento: {
+          gte: dataInicio,
+          lte: dataFim
+        },
+        status: {
+          in: ['pendente', 'confirmado']
+        }
       },
-      status: {
-        in: ['pendente', 'confirmado']
-      }
-    };
+      select: { horario: true, servicoId: true }
+    });
+    
+    // Contar TODOS os agendamentos por horário (limite global)
+    const contagemGlobalPorHorario = {};
+    todosAgendamentos.forEach(a => {
+      contagemGlobalPorHorario[a.horario] = (contagemGlobalPorHorario[a.horario] || 0) + 1;
+    });
+    
+    // Contar agendamentos por horário para o serviço específico
+    const contagemServicoPorHorario = {};
     if (servicoId) {
-      whereAgendamentos.servicoId = servicoId;
+      todosAgendamentos
+        .filter(a => a.servicoId === servicoId)
+        .forEach(a => {
+          contagemServicoPorHorario[a.horario] = (contagemServicoPorHorario[a.horario] || 0) + 1;
+        });
     }
     
-    const agendamentosExistentes = await prisma.agendamento.findMany({
-      where: whereAgendamentos,
-      select: { horario: true }
-    });
-    
-    // Contar agendamentos por horário
-    const contagemPorHorario = {};
-    agendamentosExistentes.forEach(a => {
-      contagemPorHorario[a.horario] = (contagemPorHorario[a.horario] || 0) + 1;
-    });
-    
-    // Filtrar horários disponíveis (que não estão bloqueados e têm vagas)
+    // Filtrar horários disponíveis considerando AMBOS os limites
     let horariosDisponiveis = horariosBase
       .filter(h => !horariosBloqueados.includes(h))
-      .filter(h => (contagemPorHorario[h] || 0) < maxVagas);
+      .filter(h => {
+        // Verificar limite GLOBAL primeiro
+        const totalNoHorario = contagemGlobalPorHorario[h] || 0;
+        if (totalNoHorario >= maxVagasGlobal) {
+          return false;
+        }
+        
+        // Se tem servicoId, verificar também limite do serviço específico
+        if (servicoId) {
+          const totalServicoNoHorario = contagemServicoPorHorario[h] || 0;
+          if (totalServicoNoHorario >= maxVagasServico) {
+            return false;
+          }
+        }
+        
+        return true;
+      });
     
-    // Se for hoje, filtrar horários que já passaram
-    if (ehHoje) {
+    // Se for hoje e NÃO for agendamento manual, filtrar horários que já passaram
+    if (ehHoje && !manual) {
       horariosDisponiveis = horariosDisponiveis.filter(h => {
         const [hora, minuto] = h.split(':').map(Number);
         // Horário já passou se a hora atual é maior, ou se é a mesma hora mas os minutos já passaram
@@ -147,11 +178,18 @@ export async function GET(request) {
       });
     }
     
-    // Mapear para formato com vagas restantes
-    const resultado = horariosDisponiveis.map(h => ({
-      horario: h,
-      vagasRestantes: maxVagas - (contagemPorHorario[h] || 0)
-    }));
+    // Mapear para formato com vagas restantes (considerando o limite mais restritivo)
+    const resultado = horariosDisponiveis.map(h => {
+      const vagasGlobais = maxVagasGlobal - (contagemGlobalPorHorario[h] || 0);
+      const vagasServico = servicoId 
+        ? maxVagasServico - (contagemServicoPorHorario[h] || 0)
+        : vagasGlobais;
+      
+      return {
+        horario: h,
+        vagasRestantes: Math.min(vagasGlobais, vagasServico)
+      };
+    });
     
     return NextResponse.json(resultado);
   } catch (error) {

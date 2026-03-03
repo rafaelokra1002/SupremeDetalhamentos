@@ -59,6 +59,12 @@ export default function FinanceiroPage() {
   const [loading, setLoading] = useState(true);
   const [modalGastoOpen, setModalGastoOpen] = useState(false);
   const [loadingGasto, setLoadingGasto] = useState(false);
+  
+  // Estado para filtro de mês
+  const now = new Date();
+  const [mesSelecionado, setMesSelecionado] = useState(now.getMonth() + 1); // 1-12
+  const [anoSelecionado, setAnoSelecionado] = useState(now.getFullYear());
+  
   const [formGasto, setFormGasto] = useState({
     descricao: '',
     categoria: '',
@@ -73,11 +79,12 @@ export default function FinanceiroPage() {
       return;
     }
     fetchFinanceiro();
-  }, [isAdmin]);
+  }, [isAdmin, mesSelecionado, anoSelecionado]);
 
   const fetchFinanceiro = async () => {
     try {
-      const res = await fetch('/api/financeiro');
+      setLoading(true);
+      const res = await fetch(`/api/financeiro?mes=${mesSelecionado}&ano=${anoSelecionado}`);
       if (!res.ok) {
         throw new Error('Erro ao carregar dados');
       }
@@ -90,6 +97,29 @@ export default function FinanceiroPage() {
       setLoading(false);
     }
   };
+
+  // Gerar lista de meses
+  const meses = [
+    { value: 1, label: 'Janeiro' },
+    { value: 2, label: 'Fevereiro' },
+    { value: 3, label: 'Março' },
+    { value: 4, label: 'Abril' },
+    { value: 5, label: 'Maio' },
+    { value: 6, label: 'Junho' },
+    { value: 7, label: 'Julho' },
+    { value: 8, label: 'Agosto' },
+    { value: 9, label: 'Setembro' },
+    { value: 10, label: 'Outubro' },
+    { value: 11, label: 'Novembro' },
+    { value: 12, label: 'Dezembro' },
+  ];
+
+  // Gerar lista de anos (últimos 5 anos)
+  const anos = [];
+  const anoAtual = new Date().getFullYear();
+  for (let i = anoAtual; i >= anoAtual - 4; i--) {
+    anos.push(i);
+  }
 
   const formatCurrency = (value) => {
     return new Intl.NumberFormat('pt-BR', {
@@ -183,7 +213,7 @@ export default function FinanceiroPage() {
       textColor: 'text-purple-400',
     },
     {
-      title: 'Faturamento Mensal',
+      title: `Faturamento ${meses.find(m => m.value === mesSelecionado)?.label || 'Mensal'}`,
       value: data?.faturamento?.mensal?.valor || 0,
       count: data?.faturamento?.mensal?.quantidade || 0,
       icon: CalendarRange,
@@ -220,7 +250,7 @@ export default function FinanceiroPage() {
       trend: 'down',
     },
     {
-      title: 'Despesas do Mês',
+      title: `Despesas ${meses.find(m => m.value === mesSelecionado)?.label || 'do Mês'}`,
       value: data?.despesas?.mensal?.valor || 0,
       count: data?.despesas?.mensal?.quantidade || 0,
       icon: TrendingDown,
@@ -229,7 +259,7 @@ export default function FinanceiroPage() {
       trend: 'down',
     },
     {
-      title: 'Lucro Mensal',
+      title: `Lucro ${meses.find(m => m.value === mesSelecionado)?.label || 'Mensal'}`,
       value: data?.lucroMensal || 0,
       count: data?.ordensFinalizadasMes || 0,
       icon: PiggyBank,
@@ -247,8 +277,36 @@ export default function FinanceiroPage() {
         subtitle="Acompanhe o faturamento e despesas"
       />
 
-      {/* Botão Adicionar Gasto */}
-      <div className="flex justify-end mb-4">
+      {/* Filtro de Mês e Botão Adicionar Gasto */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <Calendar size={20} className="text-gray-400" />
+            <span className="text-gray-400 text-sm">Visualizar:</span>
+          </div>
+          <select
+            value={mesSelecionado}
+            onChange={(e) => setMesSelecionado(parseInt(e.target.value))}
+            className="bg-supreme-gray border border-supreme-light-gray rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+          >
+            {meses.map((mes) => (
+              <option key={mes.value} value={mes.value}>
+                {mes.label}
+              </option>
+            ))}
+          </select>
+          <select
+            value={anoSelecionado}
+            onChange={(e) => setAnoSelecionado(parseInt(e.target.value))}
+            className="bg-supreme-gray border border-supreme-light-gray rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+          >
+            {anos.map((ano) => (
+              <option key={ano} value={ano}>
+                {ano}
+              </option>
+            ))}
+          </select>
+        </div>
         <button
           onClick={() => {
             resetFormGasto();

@@ -36,12 +36,41 @@ const CATEGORIAS = [
   'Outros',
 ];
 
+// Lista de meses para o filtro
+const MESES = [
+  { value: 1, label: 'Janeiro' },
+  { value: 2, label: 'Fevereiro' },
+  { value: 3, label: 'Março' },
+  { value: 4, label: 'Abril' },
+  { value: 5, label: 'Maio' },
+  { value: 6, label: 'Junho' },
+  { value: 7, label: 'Julho' },
+  { value: 8, label: 'Agosto' },
+  { value: 9, label: 'Setembro' },
+  { value: 10, label: 'Outubro' },
+  { value: 11, label: 'Novembro' },
+  { value: 12, label: 'Dezembro' },
+];
+
 export default function ContasPagarPage() {
   const router = useRouter();
   const { isAdmin, isLoading: authLoading } = useAuth();
   const [contas, setContas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('');
+  
+  // Filtros de mês e ano
+  const now = new Date();
+  const [mesSelecionado, setMesSelecionado] = useState(now.getMonth() + 1);
+  const [anoSelecionado, setAnoSelecionado] = useState(now.getFullYear());
+  
+  // Gerar lista de anos
+  const anos = [];
+  const anoAtual = new Date().getFullYear();
+  for (let i = anoAtual; i >= anoAtual - 4; i--) {
+    anos.push(i);
+  }
+  
   const [modalOpen, setModalOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [selectedConta, setSelectedConta] = useState(null);
@@ -64,11 +93,12 @@ export default function ContasPagarPage() {
     if (isAdmin) {
       fetchContas();
     }
-  }, [statusFilter, isAdmin]);
+  }, [statusFilter, isAdmin, mesSelecionado, anoSelecionado]);
 
   const fetchContas = async () => {
     try {
-      const res = await fetch(`/api/contas-pagar?status=${statusFilter}`);
+      setLoading(true);
+      const res = await fetch(`/api/contas-pagar?status=${statusFilter}&mes=${mesSelecionado}&ano=${anoSelecionado}`);
       const data = await res.json();
       setContas(data);
     } catch (error) {
@@ -221,17 +251,47 @@ export default function ContasPagarPage() {
 
         {/* Actions */}
         <div className="flex flex-col sm:flex-row gap-4 justify-between mb-6">
-          <div className="relative">
-            <Filter size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="pl-12 pr-8 min-w-[180px]"
-            >
-              <option value="">Todos os status</option>
-              <option value="pendente">Pendentes</option>
-              <option value="pago">Pagos</option>
-            </select>
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Filtro de Mês/Ano */}
+            <div className="flex items-center gap-2">
+              <Calendar size={18} className="text-gray-400" />
+              <select
+                value={mesSelecionado}
+                onChange={(e) => setMesSelecionado(parseInt(e.target.value))}
+                className="bg-supreme-gray border border-supreme-light-gray rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+              >
+                {MESES.map((mes) => (
+                  <option key={mes.value} value={mes.value}>
+                    {mes.label}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={anoSelecionado}
+                onChange={(e) => setAnoSelecionado(parseInt(e.target.value))}
+                className="bg-supreme-gray border border-supreme-light-gray rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+              >
+                {anos.map((ano) => (
+                  <option key={ano} value={ano}>
+                    {ano}
+                  </option>
+                ))}
+              </select>
+            </div>
+            
+            {/* Filtro de Status */}
+            <div className="relative">
+              <Filter size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="pl-12 pr-8 min-w-[180px]"
+              >
+                <option value="">Todos os status</option>
+                <option value="pendente">Pendentes</option>
+                <option value="pago">Pagos</option>
+              </select>
+            </div>
           </div>
           <button
             onClick={() => {

@@ -15,6 +15,11 @@ export async function GET(request) {
       return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
     }
 
+    // Obter parâmetros de filtro por mês/ano
+    const { searchParams } = new URL(request.url);
+    const mesParam = searchParams.get('mes'); // 1-12
+    const anoParam = searchParams.get('ano'); // ex: 2026
+
     // Usar fuso horário de Brasília (UTC-3)
     const now = new Date();
     const offsetBrasilia = -3 * 60; // -3 horas em minutos
@@ -40,9 +45,13 @@ export async function GET(request) {
     inicioSemana.setHours(0, 0, 0, 0);
     const inicioSemanaUTC = new Date(inicioSemana.getTime() - diffMinutos * 60 * 1000);
     
-    // Início do mês em Brasília
-    const inicioMes = new Date(nowBrasilia.getFullYear(), nowBrasilia.getMonth(), 1, 0, 0, 0, 0);
+    // Início do mês em Brasília (usa parâmetros se fornecidos)
+    const mesSelecionado = mesParam ? parseInt(mesParam) - 1 : nowBrasilia.getMonth();
+    const anoSelecionado = anoParam ? parseInt(anoParam) : nowBrasilia.getFullYear();
+    const inicioMes = new Date(anoSelecionado, mesSelecionado, 1, 0, 0, 0, 0);
     const inicioMesUTC = new Date(inicioMes.getTime() - diffMinutos * 60 * 1000);
+    const fimMes = new Date(anoSelecionado, mesSelecionado + 1, 0, 23, 59, 59, 999);
+    const fimMesUTC = new Date(fimMes.getTime() - diffMinutos * 60 * 1000);
     
     // Início do ano em Brasília
     const inicioAno = new Date(nowBrasilia.getFullYear(), 0, 1, 0, 0, 0, 0);
@@ -99,8 +108,8 @@ export async function GET(request) {
     const ordensSemanais = filtrarPorPeriodo(ordensEntregues, inicioSemanaUTC);
     const faturamentoSemanal = calcularAgregado(ordensSemanais);
 
-    // Mensal
-    const ordensMensais = filtrarPorPeriodo(ordensEntregues, inicioMesUTC);
+    // Mensal (com data fim quando filtro de mês específico)
+    const ordensMensais = filtrarPorPeriodo(ordensEntregues, inicioMesUTC, fimMesUTC);
     const faturamentoMensal = calcularAgregado(ordensMensais);
 
     // Anual
@@ -133,6 +142,7 @@ export async function GET(request) {
         status: 'pago',
         dataPago: {
           gte: inicioMesUTC,
+          lte: fimMesUTC,
         },
       },
       _sum: {
